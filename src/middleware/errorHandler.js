@@ -22,6 +22,11 @@ export function errorHandler(err, req, res, next) {
     return res.status(413).json({ error: 'File too large — maximum size is 20MB' });
   }
 
+  // Multer fileFilter rejection — a client mistake, not a server fault
+  if (err.message === 'Only PDF files are accepted') {
+    return res.status(400).json({ error: err.message });
+  }
+
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'An unexpected error occurred' });
 }

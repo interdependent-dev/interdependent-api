@@ -1,0 +1,20 @@
+# Keeps the Render service from spinning down (free-tier instances sleep
+# after ~15 minutes idle, and the next request then stalls for 30-60s while
+# the instance boots — which is what made sign-in feel broken).
+#
+# GitHub cron is best-effort (runs can be delayed a few minutes under load),
+# so the frontend still handles cold starts gracefully; this just makes them
+# rare. Upgrading the Render service to a paid instance makes this redundant.
+name: keep-warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: curl -fsS --max-time 60 --retry 3 --retry-delay 5 https://interdependent-api.onrender.com/health

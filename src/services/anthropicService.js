@@ -275,7 +275,7 @@ export async function evaluateScreenplay(scriptText) {
   try {
     response = await anthropic.messages.create(
       {
-        model: 'claude-opus-4-7',
+        model: 'claude-fable-5',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [

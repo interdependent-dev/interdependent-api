@@ -280,6 +280,9 @@ function classifyFatal(err) {
   if (err instanceof Anthropic.RateLimitError) {
     return new AppError('The evaluation service is temporarily rate-limited — please try again in a few minutes', 503);
   }
+  if (err instanceof Anthropic.BadRequestError && /credit balance/i.test(err.message ?? '')) {
+    return new AppError('The evaluation service is temporarily unavailable (API credits exhausted) — the team has been alerted. Your submission is saved; please try again once service is restored.', 503);
+  }
   return null;
 }
 

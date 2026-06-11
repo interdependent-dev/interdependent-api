@@ -1,7 +1,8 @@
 export class AppError extends Error {
-  constructor(message, statusCode) {
+  constructor(message, statusCode, code = null) {
     super(message);
     this.statusCode = statusCode;
+    this.code = code;
     this.isOperational = true;
   }
 }
@@ -14,7 +15,9 @@ export function errorHandler(err, req, res, next) {
   }
 
   if (err.isOperational) {
-    return res.status(err.statusCode).json({ error: err.message });
+    const body = { error: err.message };
+    if (err.code) body.code = err.code;
+    return res.status(err.statusCode).json(body);
   }
 
   // Multer file size limit

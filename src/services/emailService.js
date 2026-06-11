@@ -108,6 +108,29 @@ function buildHtml({ submitterName, title, evaluationJson }) {
 }
 
 /**
+ * Send a plain-text alert to the admin address only.
+ * Used for operational issues like credits exhaustion.
+ */
+export async function sendAdminAlert({ subject, message }) {
+  if (!env.adminEmail) return;
+  try {
+    await resend.emails.send({
+      from: env.emailFrom,
+      to: env.adminEmail,
+      subject,
+      html: `<div style="font-family:sans-serif;max-width:600px;margin:40px auto;">
+        <h2 style="color:#dc2626;">⚠️ ${subject}</h2>
+        <p style="color:#374151;font-size:15px;line-height:1.6;">${message}</p>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+        <p style="color:#9ca3af;font-size:12px;">Interdependent Studio — api.interdependent.studio</p>
+      </div>`,
+    });
+  } catch (err) {
+    console.error('Failed to send admin alert:', err.message);
+  }
+}
+
+/**
  * Send an evaluation result email to the submitter and a BCC to the admin.
  * Attaches the full JSON as a .txt file.
  * Non-fatal: logs errors rather than throwing.

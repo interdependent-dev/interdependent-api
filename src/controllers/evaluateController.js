@@ -57,7 +57,6 @@ async function runEvaluation({ script, pdfText, name, email, title }) {
  * GET /scripts/:id until status becomes 'evaluated' or 'error'.
  */
 export async function submitAndEvaluate(req, res, next) {
-  // Validate text fields
   const parsed = submitSchema.safeParse(req.body);
   if (!parsed.success) {
     const messages = parsed.error.issues.map((i) => i.message).join('; ');
@@ -71,7 +70,6 @@ export async function submitAndEvaluate(req, res, next) {
   const { name, email, title } = parsed.data;
   const { buffer, originalname } = req.file;
 
-  // 1. Upsert user
   let user;
   try {
     user = await upsertUser({ name, email });
@@ -79,22 +77,20 @@ export async function submitAndEvaluate(req, res, next) {
     return next(new AppError(err.message, 500));
   }
 
-  // 2. Parse PDF
   let pdfData;
   try {
     pdfData = await extractText(buffer);
   } catch (err) {
-    return next(err); // AppError from pdfService
+    return next(err);
   }
 
-  // 3. Create the script record (status: processing)
   let script;
   try {
     script = await saveScript({
       userId: user.id,
       title,
       filename: originalname,
-      storagePath: null, // will update after upload
+      storagePath: null,
       pageCount: pdfData.pageCount,
       wordCount: pdfData.wordCount,
       charCount: pdfData.charCount,
@@ -103,7 +99,6 @@ export async function submitAndEvaluate(req, res, next) {
     return next(new AppError(err.message, 500));
   }
 
-  // 4. Upload PDF to Supabase Storage (non-fatal)
   try {
     const storagePath = await uploadPDF({
       userId: user.id,
@@ -116,7 +111,6 @@ export async function submitAndEvaluate(req, res, next) {
     console.warn('PDF upload to storage failed (non-fatal):', err.message);
   }
 
-  // 5. Respond now; evaluate in the background
   res.status(202).json({
     id: script.id,
     status: 'processing',

@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 
+const { RateLimitError, AuthenticationError, APIConnectionTimeoutError } = Anthropic;
+
 const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
 
 const SYSTEM_PROMPT = `You are a professional story analyst at a major Hollywood studio. Your job is to evaluate screenplays based on a strict rubric and return a structured JSON evaluation. Your response must follow the evaluation framework precisely and adhere to the scoring guidelines provided. Return only JSON. No explanations, just JSON. Please also output the genre of the script as well as the country of origin of the script. Use the language as one of the clues. Do your best based on all context clues to select from this list of genres in snake case [mystery, action, comedy, fiction, drama, horror] and this list of countries in ISO13366 format [US,CN,JP,KR,IN,GB,FR,DE,CA,AU,RU,IT,ES,MX,BR,HK,TW,SG,NL,AR,TR,SA,ID,TH,MY,PH,VN,SE,CH,BE,NO,DK,FI,PL,AT,IE,IL,NZ,PT,CZ,HU,GR,RO,ZA,EG,NG,PK,IR,CL,CO,PE,KE,MA,RS,BG,HR,LU,SK,BA,IS]. For the genre be sure to return the genre from the list in snake case as listed. Output the country in the ISO3166. If the script is from a country not on the list please mark it as “other” and include its ISO3166 code as well. Finally, please find comparable films and their production budgets together with general knowledge and best reasoning to this film to provide a single value for the budget. Output this budget variable as the “MAX Budget” in US Dollars. Convert
@@ -319,7 +321,15 @@ export async function evaluateScreenplay(scriptText) {
         {
           model,
           max_tokens: 8192,
-          system: SYSTEM_PROMPT,
+          // Cache the system prompt — identical every call, ~3k tokens.
+          // Cache reads cost 10x less than full input tokens.
+          system: [
+            {
+              type: 'text',
+              text: SYSTEM_PROMPT,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
           messages: [
             {
               role: 'user',

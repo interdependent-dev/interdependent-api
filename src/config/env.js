@@ -9,7 +9,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRY: z.string().default('86400'),
   CORS_ORIGINS: z.string().default('https://www.interdependent.studio,https://interdependent.studio'),
-  ANTHROPIC_MODEL: z.string().default('claude-opus-4-7'),
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   EMAIL_FROM: z.string().email('EMAIL_FROM must be a valid email (e.g. noreply@interdependent.studio)'),
   ADMIN_EMAIL: z.string().email('ADMIN_EMAIL must be a valid email').optional(),

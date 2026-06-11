@@ -97,6 +97,26 @@ export async function uploadPDF({ userId, scriptId, filename, buffer }) {
 }
 
 /**
+ * Download a stored PDF as a Buffer (for retrying failed evaluations).
+ */
+export async function downloadPDF(storagePath) {
+  const { data, error } = await supabase.storage.from('scripts').download(storagePath);
+  if (error) throw new Error(`Storage downloadPDF: ${error.message}`);
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/**
+ * Put a script back into 'processing' before a retry, clearing the old error.
+ */
+export async function markScriptProcessing({ id }) {
+  const { error } = await supabase
+    .from('scripts')
+    .update({ status: 'processing', evaluation_result: null, evaluation_json: null })
+    .eq('id', id);
+  if (error) throw new Error(`DB markScriptProcessing: ${error.message}`);
+}
+
+/**
  * List all scripts with their submitting user's name and email.
  */
 export async function listScripts({ limit = 50, offset = 0 } = {}) {

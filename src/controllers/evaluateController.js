@@ -22,8 +22,9 @@ const submitSchema = z.object({
  * Runs after the 202 response is sent. Every outcome is persisted: success
  * marks the row evaluated, any failure marks it errored with the reason and
  * alerts the admin — a submission can never silently vanish.
+ * Exported so the retry route can re-run stored submissions.
  */
-async function runEvaluation({ script, pdfText, name, email, title }) {
+export async function runEvaluation({ script, pdfText, name, email, title }) {
   try {
     const { rawText, evaluationJson, modelUsed } = await evaluateScreenplay(pdfText);
 

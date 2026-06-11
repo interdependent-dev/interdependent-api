@@ -9,7 +9,6 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRY: z.string().default('86400'),
   CORS_ORIGINS: z.string().default('https://www.interdependent.studio,https://interdependent.studio'),
-  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   EMAIL_FROM: z.string().email('EMAIL_FROM must be a valid email (e.g. noreply@interdependent.studio)'),
   ADMIN_EMAIL: z.string().email('ADMIN_EMAIL must be a valid email').optional(),
@@ -34,8 +33,18 @@ export const env = {
   jwtSecret: parsed.data.JWT_SECRET,
   jwtExpiry: parseInt(parsed.data.JWT_EXPIRY, 10),
   corsOrigins: parsed.data.CORS_ORIGINS.split(',').map((o) => o.trim()),
-  anthropicModel: parsed.data.ANTHROPIC_MODEL,
+  // Operator decision (Chris, 2026-06-10): Sonnet is the evaluation model,
+  // pinned in code so a stale dashboard env var can't override it. To change
+  // models, edit this line; fallbacks live in anthropicService.js.
+  anthropicModel: 'claude-sonnet-4-6',
   resendApiKey: parsed.data.RESEND_API_KEY,
   emailFrom: parsed.data.EMAIL_FROM,
   adminEmail: parsed.data.ADMIN_EMAIL,
 };
+
+if (process.env.ANTHROPIC_MODEL && process.env.ANTHROPIC_MODEL.trim() !== env.anthropicModel) {
+  console.warn(
+    `ANTHROPIC_MODEL env var ('${process.env.ANTHROPIC_MODEL}') is ignored — ` +
+    `the model is pinned to '${env.anthropicModel}' in src/config/env.js`,
+  );
+}

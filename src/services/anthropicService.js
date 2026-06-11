@@ -320,7 +320,7 @@ export async function evaluateScreenplay(scriptText) {
       const stream = anthropic.messages.stream(
         {
           model,
-          max_tokens: 8192,
+          max_tokens: 16384,
           // Cache the system prompt — identical every call, ~3k tokens.
           // Cache reads cost 10x less than full input tokens.
           system: [
@@ -364,7 +364,7 @@ export async function evaluateScreenplay(scriptText) {
 
     const evaluationJson = extractJson(rawText);
     if (!evaluationJson) {
-      console.warn(`Model '${model}' returned unparseable JSON — storing raw text only`);
+      console.warn(`Model '${model}' returned unparseable JSON (stop_reason: ${response.stop_reason}) — storing raw text only`);
     }
     if (model !== env.anthropicModel.trim()) {
       console.warn(`Evaluation completed on fallback model '${model}' — check ANTHROPIC_MODEL ('${env.anthropicModel}')`);

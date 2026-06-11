@@ -45,8 +45,12 @@ router.post('/:id/retry', async (req, res, next) => {
   try {
     const row = await getScriptById(req.params.id);
     if (!row) return next(new AppError('Script not found', 404));
-    if (row.status !== 'error') {
-      return next(new AppError('Only failed evaluations can be retried', 409));
+    // Retryable: failed outright, or "evaluated" with no parsed scores (the
+    // model reply was truncated or malformed, stored as raw text only).
+    const retryable = row.status === 'error'
+      || (row.status === 'evaluated' && !row.evaluation_json);
+    if (!retryable) {
+      return next(new AppError('Only failed or unscored evaluations can be retried', 409));
     }
     if (!row.storage_path) {
       return next(new AppError('No stored PDF for this submission — please resubmit the file', 422));

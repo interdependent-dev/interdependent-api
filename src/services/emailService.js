@@ -126,12 +126,17 @@ export async function sendEvaluationEmail({ submitterName, submitterEmail, title
     recipients.push(env.adminEmail);
   }
 
+  // buildHtml needs parsed JSON; with raw-text-only results send a plain version
+  const html = evaluationJson
+    ? buildHtml({ submitterName, title, evaluationJson })
+    : `<p>Screenplay evaluation for <strong>${title}</strong> (submitted by ${submitterName}) is attached.</p>`;
+
   try {
     await resend.emails.send({
       from: env.emailFrom,
       to: recipients,
       subject,
-      html: buildHtml({ submitterName, title, evaluationJson }),
+      html,
       attachments: [
         {
           filename: `${title.replace(/[^a-z0-9]/gi, '_')}_evaluation.txt`,
@@ -141,5 +146,26 @@ export async function sendEvaluationEmail({ submitterName, submitterEmail, title
     });
   } catch (err) {
     console.error('Failed to send evaluation email:', err.message);
+  }
+}
+
+/**
+ * Alert the admin that an evaluation failed, with the reason. Non-fatal.
+ */
+export async function sendFailureAlert({ title, submitterName, submitterEmail, reason }) {
+  if (!env.adminEmail) return;
+  try {
+    await resend.emails.send({
+      from: env.emailFrom,
+      to: [env.adminEmail],
+      subject: `[ERROR] Screenplay evaluation failed — ${title}`,
+      html: `
+        <p><strong>${title}</strong> (submitted by ${submitterName}, ${submitterEmail}) failed to evaluate.</p>
+        <p style="color:#b91c1c;font-family:monospace;">${reason}</p>
+        <p>The submission and PDF are stored — it can be retried after the cause is fixed.
+        Check <code>https://interdependent-api.onrender.com/health?deep=1</code> for model/API status.</p>`,
+    });
+  } catch (err) {
+    console.error('Failed to send failure alert:', err.message);
   }
 }

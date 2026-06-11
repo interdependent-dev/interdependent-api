@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { extractText } from '../services/pdfService.js';
 import { evaluateScreenplay } from '../services/anthropicService.js';
-import { sendEvaluationEmail } from '../services/emailService.js';
+import { sendEvaluationEmail, sendFailureAlert } from '../services/emailService.js';
 import {
   upsertUser,
   saveScript,
@@ -18,6 +18,44 @@ const submitSchema = z.object({
   title: z.string().min(1, 'title is required'),
 });
 
+/**
+ * Runs after the 202 response is sent. Every outcome is persisted: success
+ * marks the row evaluated, any failure marks it errored with the reason and
+ * alerts the admin — a submission can never silently vanish.
+ */
+async function runEvaluation({ script, pdfText, name, email, title }) {
+  try {
+    const { rawText, evaluationJson, modelUsed } = await evaluateScreenplay(pdfText);
+
+    await updateScriptEvaluation({ id: script.id, evaluationResult: rawText, evaluationJson });
+    console.log(`Script ${script.id} ("${title}") evaluated by ${modelUsed}`);
+
+    sendEvaluationEmail({
+      submitterName: name,
+      submitterEmail: email,
+      title,
+      evaluationJson,
+      rawText,
+    }).catch((err) => console.error('Evaluation email failed:', err.message));
+  } catch (err) {
+    const reason = err.message || 'Unknown evaluation error';
+    console.error(`Script ${script.id} ("${title}") evaluation failed: ${reason}`);
+    await markScriptError({ id: script.id, reason }).catch(() => {});
+    sendFailureAlert({
+      title,
+      submitterName: name,
+      submitterEmail: email,
+      reason,
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Accepts the submission, stores everything, and responds 202 immediately.
+ * The Claude evaluation runs in the background — it can take minutes, which
+ * is longer than proxies keep an idle HTTP request alive. The client polls
+ * GET /scripts/:id until status becomes 'evaluated' or 'error'.
+ */
 export async function submitAndEvaluate(req, res, next) {
   // Validate text fields
   const parsed = submitSchema.safeParse(req.body);
@@ -49,7 +87,7 @@ export async function submitAndEvaluate(req, res, next) {
     return next(err); // AppError from pdfService
   }
 
-  // 3. Create the script record (status: processing) — need an ID before uploading
+  // 3. Create the script record (status: processing)
   let script;
   try {
     script = await saveScript({
@@ -65,7 +103,7 @@ export async function submitAndEvaluate(req, res, next) {
     return next(new AppError(err.message, 500));
   }
 
-  // 4. Upload PDF to Supabase Storage, then persist the path to the DB row
+  // 4. Upload PDF to Supabase Storage (non-fatal)
   try {
     const storagePath = await uploadPDF({
       userId: user.id,
@@ -74,42 +112,19 @@ export async function submitAndEvaluate(req, res, next) {
       buffer,
     });
     await updateScriptStoragePath({ id: script.id, storagePath });
-    script.storage_path = storagePath;
   } catch (err) {
     console.warn('PDF upload to storage failed (non-fatal):', err.message);
   }
 
-  // 5. Call Claude
-  let rawText, evaluationJson;
-  try {
-    ({ rawText, evaluationJson } = await evaluateScreenplay(pdfData.text));
-  } catch (err) {
-    await markScriptError({ id: script.id, reason: err.message }).catch(() => {});
-    return next(err);
-  }
-
-  // 6. Persist evaluation (raw text + parsed JSON)
-  try {
-    await updateScriptEvaluation({ id: script.id, evaluationResult: rawText, evaluationJson });
-  } catch (err) {
-    console.error('Failed to persist evaluation result:', err.message);
-  }
-
-  // 7. Send evaluation email (non-blocking — don't fail the request if email fails)
-  sendEvaluationEmail({
-    submitterName: name,
-    submitterEmail: email,
-    title,
-    evaluationJson,
-    rawText,
-  }).catch(() => {});
-
-  return res.status(200).json({
+  // 5. Respond now; evaluate in the background
+  res.status(202).json({
     id: script.id,
+    status: 'processing',
     title,
-    evaluation: evaluationJson ?? rawText,
-    wordCount: pdfData.wordCount,
     pageCount: pdfData.pageCount,
+    wordCount: pdfData.wordCount,
     charCount: pdfData.charCount,
   });
+
+  runEvaluation({ script, pdfText: pdfData.text, name, email, title });
 }

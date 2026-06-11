@@ -261,57 +261,130 @@ Final Instructions
 • If the screenplay is of an existing movie, evaluate it based strictly on the supplied screenplay without any additional context or knowledge of the completed movie.
 • Follow the rubric strictly and avoid subjective bias.`;
 
+// Known-good models to fall back to when the configured model fails. A wrong
+// ANTHROPIC_MODEL value (or a model the key can't access) must degrade to a
+// working evaluation, not take the whole service down.
+const FALLBACK_MODELS = ['claude-opus-4-8', 'claude-sonnet-4-6'];
+
+function candidateModels() {
+  const primary = env.anthropicModel.trim();
+  return [primary, ...FALLBACK_MODELS.filter((m) => m !== primary)];
+}
+
+// Errors tied to the credential or the org, not the model — switching models
+// won't help, so surface them immediately with an actionable message.
+function classifyFatal(err) {
+  if (err instanceof Anthropic.AuthenticationError) {
+    return new AppError('Evaluation service authentication failed — the Anthropic API key is invalid or revoked', 502);
+  }
+  if (err instanceof Anthropic.RateLimitError) {
+    return new AppError('The evaluation service is temporarily rate-limited — please try again in a few minutes', 503);
+  }
+  return null;
+}
+
+function extractJson(text) {
+  const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  try { return JSON.parse(stripped); } catch { /* fall through */ }
+  // Repair pass: take the outermost {...} in case the model added prose around it
+  const start = stripped.indexOf('{');
+  const end = stripped.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(stripped.slice(start, end + 1)); } catch { /* fall through */ }
+  }
+  return null;
+}
+
 /**
- * Send screenplay text to Claude and return { rawText, evaluationJson }.
- * evaluationJson is the parsed JSON object; rawText is the original response string.
- * Throws AppError on timeout, API failure, or unparseable JSON.
+ * Send screenplay text to Claude and return { rawText, evaluationJson, modelUsed }.
+ * Tries the configured model first, then falls back through known-good models on
+ * model-specific or transient server failures. Streams the response so long
+ * evaluations don't hit idle HTTP timeouts; the SDK retries 429/5xx internally.
+ * Throws AppError when every candidate fails.
  */
 export async function evaluateScreenplay(scriptText) {
   const truncated = scriptText.length > 100_000
     ? scriptText.slice(0, 100_000) + '\n\n[...script truncated for length...]'
     : scriptText;
 
-  let response;
-  try {
-    response = await anthropic.messages.create(
-      {
-        model: env.anthropicModel,
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Please evaluate the following screenplay:\n\n${truncated}`,
-          },
-        ],
-      },
-      { signal: AbortSignal.timeout(120_000) },
-    );
-  } catch (err) {
-    if (err.name === 'TimeoutError' || err.code === 'ERR_OPERATION_TIMEOUT') {
-      throw new AppError('The evaluation timed out — please try again with a shorter script', 504);
+  const failures = [];
+
+  for (const model of candidateModels()) {
+    let response;
+    try {
+      const stream = anthropic.messages.stream(
+        {
+          model,
+          max_tokens: 8192,
+          system: SYSTEM_PROMPT,
+          messages: [
+            {
+              role: 'user',
+              content: `Please evaluate the following screenplay:\n\n${truncated}`,
+            },
+          ],
+        },
+        { timeout: 240_000, maxRetries: 2 },
+      );
+      response = await stream.finalMessage();
+    } catch (err) {
+      const fatal = classifyFatal(err);
+      if (fatal) throw fatal;
+
+      // Model-specific (404/403/model 400) or transient server trouble
+      // (5xx/529/connection/timeout) — log it and try the next candidate.
+      const detail = `${err.status ?? err.name ?? 'error'}: ${err.message}`;
+      console.error(`Evaluation with model '${model}' failed (${detail})`);
+      failures.push(`${model} → ${detail}`);
+      continue;
     }
-    throw new AppError(`LLM evaluation failed: ${err.message}`, 502);
+
+    const rawText = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+
+    if (!rawText) {
+      failures.push(`${model} → empty response (stop_reason: ${response.stop_reason})`);
+      continue;
+    }
+
+    const evaluationJson = extractJson(rawText);
+    if (!evaluationJson) {
+      console.warn(`Model '${model}' returned unparseable JSON — storing raw text only`);
+    }
+    if (model !== env.anthropicModel.trim()) {
+      console.warn(`Evaluation completed on fallback model '${model}' — check ANTHROPIC_MODEL ('${env.anthropicModel}')`);
+    }
+
+    return { rawText, evaluationJson, modelUsed: model };
   }
 
-  const content = response.content[0];
-  if (content?.type !== 'text') {
-    throw new AppError('Unexpected response format from LLM', 502);
-  }
-
-  const rawText = content.text;
-
-  // Strip markdown fences if Claude wraps the JSON despite instructions
-  const jsonString = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-
-  let evaluationJson;
-  try {
-    evaluationJson = JSON.parse(jsonString);
-  } catch {
-    // Return raw text so the caller can still store it; flag as unparseable
-    console.warn('Claude response was not valid JSON — storing as raw text only');
-    evaluationJson = null;
-  }
-
-  return { rawText, evaluationJson };
+  throw new AppError(`Evaluation failed on all models — ${failures.join('; ')}`, 502);
 }
+
+/**
+ * One-token probe of a model, for the deep health check. Never throws.
+ */
+export async function pingModel(model) {
+  try {
+    await anthropic.messages.create(
+      {
+        model,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }],
+      },
+      { timeout: 20_000, maxRetries: 0 },
+    );
+    return { model, ok: true };
+  } catch (err) {
+    return {
+      model,
+      ok: false,
+      status: err.status ?? null,
+      error: err.message?.slice(0, 300) ?? String(err),
+    };
+  }
+}
+
+export { candidateModels };

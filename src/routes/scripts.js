@@ -4,6 +4,7 @@ import {
   listScripts,
   getScriptById,
   downloadPDF,
+  createSignedPdfUrl,
   markScriptProcessing,
 } from '../services/supabaseService.js';
 import { extractText } from '../services/pdfService.js';
@@ -36,6 +37,27 @@ router.get('/:id', async (req, res, next) => {
     res.json(script);
   } catch (err) {
     next(new AppError(err.message, 500));
+  }
+});
+
+// GET /scripts/:id/pdf-url        → { url }  short-lived signed URL to read the PDF
+// GET /scripts/:id/pdf-url?dl=1   → { url }  same, but forces a download with a clean name
+// The bucket is private, so the browser reads the file through this signed URL
+// rather than directly. URL expires in 10 minutes.
+router.get('/:id/pdf-url', async (req, res, next) => {
+  try {
+    const row = await getScriptById(req.params.id);
+    if (!row) return next(new AppError('Script not found', 404));
+    if (!row.storage_path) {
+      return next(new AppError('No stored PDF for this submission', 404));
+    }
+    const downloadName = req.query.dl === '1'
+      ? `${String(row.title || 'script').replace(/[^\w.-]+/g, '_').slice(0, 80)}.pdf`
+      : undefined;
+    const url = await createSignedPdfUrl(row.storage_path, 600, downloadName);
+    res.json({ url });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
   }
 });
 

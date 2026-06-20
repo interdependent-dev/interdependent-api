@@ -106,6 +106,20 @@ export async function downloadPDF(storagePath) {
 }
 
 /**
+ * Mint a short-lived signed URL for a stored PDF so an authenticated browser
+ * can read it directly from Supabase (the bucket is private; the service-role
+ * key never leaves the server). When downloadName is given, the URL carries a
+ * content-disposition so the browser saves it with a clean filename.
+ */
+export async function createSignedPdfUrl(storagePath, expiresIn = 600, downloadName) {
+  const { data, error } = await supabase.storage
+    .from('scripts')
+    .createSignedUrl(storagePath, expiresIn, downloadName ? { download: downloadName } : undefined);
+  if (error) throw new Error(`Storage createSignedPdfUrl: ${error.message}`);
+  return data.signedUrl;
+}
+
+/**
  * Put a script back into 'processing' before a retry, clearing the old error.
  */
 export async function markScriptProcessing({ id }) {

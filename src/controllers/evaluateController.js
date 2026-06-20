@@ -95,6 +95,8 @@ export async function submitAndEvaluate(req, res, next) {
       pageCount: pdfData.pageCount,
       wordCount: pdfData.wordCount,
       charCount: pdfData.charCount,
+      submitterName: name,
+      submitterEmail: email,
     });
   } catch (err) {
     return next(new AppError(err.message, 500));

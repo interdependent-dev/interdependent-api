@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS scripts (
   title             TEXT NOT NULL,
   filename          TEXT NOT NULL,
   storage_path      TEXT,
+  -- Submitter is stored per-script (not just via the users row): submissions
+  -- can share one intake email like mailroom@, and keying identity on email
+  -- alone would overwrite that user's name with whoever submitted last.
+  submitter_name    TEXT,
+  submitter_email   TEXT,
   page_count        INTEGER,
   word_count        INTEGER,
   char_count        INTEGER,

@@ -22,21 +22,35 @@ export async function upsertUser({ name, email }) {
 /**
  * Insert a new script row. Returns the created row.
  */
-export async function saveScript({ userId, title, filename, storagePath, pageCount, wordCount, charCount }) {
-  const { data, error } = await supabase
+export async function saveScript({ userId, title, filename, storagePath, pageCount, wordCount, charCount, submitterName, submitterEmail }) {
+  const base = {
+    user_id: userId,
+    title,
+    filename,
+    storage_path: storagePath,
+    page_count: pageCount,
+    word_count: wordCount,
+    char_count: charCount,
+    status: 'processing',
+  };
+
+  // Submitter name/email are stored on the SCRIPT, not just derived from the
+  // users row. Multiple submissions can share one intake email (mailroom@…);
+  // keying identity on email alone would collapse them onto a single user and
+  // overwrite that user's name with whoever submitted last — so every script
+  // under that email displayed the most recent submitter. Storing it per-row
+  // keeps each submission's true submitter.
+  let { data, error } = await supabase
     .from('scripts')
-    .insert({
-      user_id: userId,
-      title,
-      filename,
-      storage_path: storagePath,
-      page_count: pageCount,
-      word_count: wordCount,
-      char_count: charCount,
-      status: 'processing',
-    })
+    .insert({ ...base, submitter_name: submitterName ?? null, submitter_email: submitterEmail ?? null })
     .select()
     .single();
+
+  // Tolerate the columns not being migrated yet — never fail a submission over
+  // it. Once the ALTER TABLE has run, the first insert path takes over.
+  if (error && /submitter_name|submitter_email|does not exist|schema cache/i.test(error.message)) {
+    ({ data, error } = await supabase.from('scripts').insert(base).select().single());
+  }
 
   if (error) throw new Error(`DB saveScript: ${error.message}`);
   return data;

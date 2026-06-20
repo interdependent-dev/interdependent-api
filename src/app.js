@@ -7,6 +7,8 @@ import { pingModel, candidateModels } from './services/anthropicService.js';
 import authRouter from './routes/auth.js';
 import evaluateRouter from './routes/evaluate.js';
 import scriptsRouter from './routes/scripts.js';
+import readersRouter from './routes/readers.js';
+import leaderboardRouter from './routes/leaderboard.js';
 
 const app = express();
 
@@ -52,6 +54,8 @@ app.get('/health', async (req, res, next) => {
 app.use('/auth', authRouter);
 app.use('/evaluate', evaluateRouter);
 app.use('/scripts', scriptsRouter);
+app.use('/readers', readersRouter);
+app.use('/leaderboard', leaderboardRouter);
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

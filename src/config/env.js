@@ -12,6 +12,10 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   EMAIL_FROM: z.string().email('EMAIL_FROM must be a valid email (e.g. noreply@interdependent.studio)'),
   ADMIN_EMAIL: z.string().email('ADMIN_EMAIL must be a valid email').optional(),
+  // Passkey / WebAuthn
+  RP_ID: z.string().default('interdependent.studio'),
+  RP_NAME: z.string().default('Interdependent Studio'),
+  ACTION_TOKEN_EXPIRY: z.string().default('300'),  // seconds; 5 min default
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -40,6 +44,9 @@ export const env = {
   resendApiKey: parsed.data.RESEND_API_KEY,
   emailFrom: parsed.data.EMAIL_FROM,
   adminEmail: parsed.data.ADMIN_EMAIL,
+  rpId: parsed.data.RP_ID,
+  rpName: parsed.data.RP_NAME,
+  actionTokenExpiry: parseInt(parsed.data.ACTION_TOKEN_EXPIRY, 10),
 };
 
 if (process.env.ANTHROPIC_MODEL && process.env.ANTHROPIC_MODEL.trim() !== env.anthropicModel) {

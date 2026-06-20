@@ -40,15 +40,15 @@ export async function finishRegistration({ credential, expectedChallenge }) {
   if (!result.verified || !result.registrationInfo) {
     throw new Error('Registration verification failed');
   }
-  const { credentialID, credentialPublicKey, counter, credentialDeviceType, credentialBackedUp } =
-    result.registrationInfo;
+  // v13: credential info lives under registrationInfo.credential (not flat on registrationInfo)
+  const { credential: cred, credentialDeviceType, credentialBackedUp } = result.registrationInfo;
   return {
-    credentialId: credentialID,
-    publicKey: isoBase64URL.fromBuffer(credentialPublicKey),
-    counter,
+    credentialId: cred.id,
+    publicKey: isoBase64URL.fromBuffer(cred.publicKey),
+    counter: cred.counter,
     deviceType: credentialDeviceType ?? null,
     backedUp: credentialBackedUp ?? false,
-    transports: credential.response?.transports ?? [],
+    transports: cred.transports ?? credential.response?.transports ?? [],
   };
 }
 
@@ -70,9 +70,10 @@ export async function finishAuthentication({ credential, expectedChallenge, stor
     expectedChallenge,
     expectedOrigin: env.corsOrigins,
     expectedRPID: env.rpId,
-    authenticator: {
-      credentialID: storedCredential.credential_id,
-      credentialPublicKey: isoBase64URL.toBuffer(storedCredential.public_key),
+    // v13: renamed from `authenticator` to `credential`, and fields renamed too
+    credential: {
+      id: storedCredential.credential_id,
+      publicKey: isoBase64URL.toBuffer(storedCredential.public_key),
       counter: storedCredential.counter,
       transports: storedCredential.transports ?? [],
     },

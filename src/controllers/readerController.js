@@ -124,22 +124,21 @@ export async function registerComplete(req, res, next) {
     return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
   }
 
-  // If the handle already exists, the reader registered from another device —
-  // add the new credential to the same reader account.
-  let reader = await getReaderByHandle(handle).catch(() => null);
-  const readerId = reader?.id ?? tempReaderId;
+  // Reject if handle is already taken — returning readers on a new device
+  // should use the discoverable auth flow, not re-register.
+  const existing = await getReaderByHandle(handle).catch(() => null);
+  if (existing) {
+    return next(new AppError(`Handle '${handle}' is already registered`, 409, 'handle_taken'));
+  }
 
+  let reader;
   try {
-    if (!reader) {
-      reader = await createReader({ id: readerId, handle, displayName });
-    }
+    reader = await createReader({ id: tempReaderId, handle, displayName });
   } catch (err) {
-    // Unique constraint on handle → concurrent registration race
     if (/duplicate|unique/i.test(err.message)) {
-      reader = await getReaderByHandle(handle);
-    } else {
-      return next(new AppError(`Could not create reader: ${err.message}`, 500));
+      return next(new AppError(`Handle '${handle}' is already registered`, 409, 'handle_taken'));
     }
+    return next(new AppError(`Could not create reader: ${err.message}`, 500));
   }
 
   try {
@@ -243,6 +242,22 @@ export async function authComplete(req, res, next) {
   }
 
   await updateCredentialCounter({ id: storedCredential.id, counter: authInfo.newCounter }).catch(() => {});
+
+  // Cross-check userHandle when the browser returned one — it should decode
+  // to the reader's UUID (set as userID bytes during registration).
+  const userHandle = credential?.response?.userHandle;
+  if (userHandle) {
+    try {
+      const { isoBase64URL } = await import('@simplewebauthn/server/helpers');
+      const decoded = new TextDecoder().decode(isoBase64URL.toBuffer(userHandle));
+      if (decoded !== storedCredential.reader_id) {
+        return next(new AppError('Credential user binding mismatch', 401, 'passkey_verify_failed'));
+      }
+    } catch {
+      // Malformed userHandle — treat as a verification failure
+      return next(new AppError('Invalid userHandle in credential response', 401, 'passkey_verify_failed'));
+    }
+  }
 
   const reader = await getReaderById(storedCredential.reader_id);
   if (!reader) return next(new AppError('Reader account not found', 404));

@@ -53,15 +53,20 @@ export async function finishRegistration({ credential, expectedChallenge }) {
 }
 
 export async function createAuthenticationOptions({ allowCredentials = [] }) {
-  return generateAuthenticationOptions({
+  const opts = {
     rpID: env.rpId,
-    allowCredentials: allowCredentials.map((c) => ({
+    userVerification: 'preferred',
+  };
+  // Omit allowCredentials entirely when empty — an explicit [] prevents
+  // discoverable / conditional-UI flows in some browsers.
+  if (allowCredentials.length > 0) {
+    opts.allowCredentials = allowCredentials.map((c) => ({
       id: c.credential_id,
       type: 'public-key',
       transports: c.transports ?? [],
-    })),
-    userVerification: 'preferred',
-  });
+    }));
+  }
+  return generateAuthenticationOptions(opts);
 }
 
 export async function finishAuthentication({ credential, expectedChallenge, storedCredential }) {

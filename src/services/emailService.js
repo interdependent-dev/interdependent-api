@@ -48,7 +48,8 @@ function normalizeForEmail(d) {
       decision: d.decision, genre: d.genre, country: d.country, budget: d.budget || null,
       scoreValue: cs.final_craft_score, scoreLabel: 'Craft Score',
       categories, championship: (rating || items.length) ? { rating, items, justification: cr.championability_justification } : null,
-      comps: null, summary: cs.craft_justification || '',
+      comps: null, summary: d.summary || cs.craft_justification || '',
+      craftAssessment: cs.craft_justification || '', readVerified: d.read_verified,
     };
   }
   const scores = d.scores || {};
@@ -60,6 +61,7 @@ function normalizeForEmail(d) {
     budget: d.max_budget != null ? `$${Number(d.max_budget).toLocaleString()}` : null,
     scoreValue: d.weighted_score, scoreLabel: 'Weighted Score',
     categories, championship: null, comps: d.comparable_films || null, summary: d.summary || '',
+    craftAssessment: '', readVerified: undefined,
   };
 }
 
@@ -138,13 +140,24 @@ function buildHtml({ submitterName, title, evaluationJson }) {
       </table>
     </div>
 
+    ${n.readVerified === false ? `
+    <div style="padding:0 40px 16px;">
+      <p style="margin:0;background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #d97706;border-radius:6px;padding:10px 14px;color:#92400e;font-size:13px;">⚠ Partial read — the model could not be confirmed to have read the ending. Treat the scores and summary with caution.</p>
+    </div>` : ''}
+
     ${championabilitySection}
 
     <!-- Summary -->
     ${n.summary ? `
     <div style="padding:0 40px 24px;">
-      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">${champ ? 'Craft Assessment' : 'Overall Summary'}</h3>
+      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Summary</h3>
       <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${n.summary}</p>
+    </div>` : ''}
+
+    ${n.craftAssessment && n.craftAssessment !== n.summary ? `
+    <div style="padding:0 40px 24px;">
+      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Craft Assessment</h3>
+      <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${n.craftAssessment}</p>
     </div>` : ''}
 
     <!-- Comparable films -->

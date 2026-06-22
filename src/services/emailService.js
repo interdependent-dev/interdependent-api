@@ -15,27 +15,81 @@ function scoreBar(score) {
   return `${blocks} ${score}/10`;
 }
 
+// Two evaluators have shipped: "Casey" (6 categories → weighted_score, comps,
+// summary) and "BARAKA" (7 craft categories → final_craft_score, plus a separate
+// Championability HIGH/MED/LOW axis). Collapse either into one render shape.
+const CRAFT_NAMES = {
+  story_architecture: 'Story Architecture', character_construction: 'Character Construction',
+  scene_craft: 'Scene Craft', screenplay_execution: 'Screenplay Execution',
+  dialogue_effectiveness: 'Dialogue', thematic_cohesion: 'Thematic Cohesion',
+  emotional_engagement: 'Emotional Engagement',
+};
+const CHAMP_NAMES = {
+  distinctiveness: 'Distinctiveness', writers_voice: "Writer's Voice",
+  memorability: 'Memorability', genre_competence: 'Genre Competence',
+};
+const CHAMP_COLORS = { HIGH: '#16a34a', MEDIUM: '#d97706', LOW: '#dc2626' };
+
+function normalizeForEmail(d) {
+  d = d || {};
+  const e = d.evaluation;
+  const isBaraka = e && typeof e === 'object' && (e.craft_score || e.championability_rating);
+  if (isBaraka) {
+    const cs = e.craft_score || {};
+    const cr = e.championability_rating || {};
+    const categories = Object.keys(CRAFT_NAMES).filter((k) => cs[k]).map((k) => ({
+      name: CRAFT_NAMES[k], score: cs[k].score, justification: cs[k].rationale ?? cs[k].justification,
+    }));
+    const items = Object.keys(CHAMP_NAMES).filter((k) => cr[k]).map((k) => ({
+      name: CHAMP_NAMES[k], description: cr[k].description ?? cr[k].rationale,
+    }));
+    const rating = (cr.final_championability_rating || '').toString().toUpperCase();
+    return {
+      decision: d.decision, genre: d.genre, country: d.country, budget: d.budget || null,
+      scoreValue: cs.final_craft_score, scoreLabel: 'Craft Score',
+      categories, championship: (rating || items.length) ? { rating, items, justification: cr.championability_justification } : null,
+      comps: null, summary: cs.craft_justification || '',
+    };
+  }
+  const scores = d.scores || {};
+  const categories = [['theme', 'Theme'], ['character', 'Character'], ['dialogue', 'Dialogue'],
+    ['plot_structure', 'Plot/Structure'], ['marketability', 'Marketability'], ['originality', 'Originality']]
+    .filter(([k]) => scores[k]).map(([k, name]) => ({ name, score: scores[k]?.score, justification: scores[k]?.justification }));
+  return {
+    decision: d.decision, genre: d.genre, country: d.country,
+    budget: d.max_budget != null ? `$${Number(d.max_budget).toLocaleString()}` : null,
+    scoreValue: d.weighted_score, scoreLabel: 'Weighted Score',
+    categories, championship: null, comps: d.comparable_films || null, summary: d.summary || '',
+  };
+}
+
 function buildHtml({ submitterName, title, evaluationJson }) {
   const d = evaluationJson;
-  const decision = DECISION_COLORS[d.decision] ?? { bg: '#6b7280', label: d.decision };
+  const n = normalizeForEmail(d);
+  const decision = DECISION_COLORS[n.decision] ?? { bg: '#6b7280', label: n.decision };
 
-  const scoreRows = [
-    ['Theme',         d.scores?.theme?.score,         d.scores?.theme?.justification],
-    ['Character',     d.scores?.character?.score,      d.scores?.character?.justification],
-    ['Dialogue',      d.scores?.dialogue?.score,       d.scores?.dialogue?.justification],
-    ['Plot/Structure',d.scores?.plot_structure?.score, d.scores?.plot_structure?.justification],
-    ['Marketability', d.scores?.marketability?.score,  d.scores?.marketability?.justification],
-    ['Originality',   d.scores?.originality?.score,    d.scores?.originality?.justification],
-  ].map(([cat, score, justification]) => `
+  const scoreRows = n.categories.map(({ name, score, justification }) => `
     <tr>
-      <td style="padding:10px 12px;font-weight:600;white-space:nowrap;color:#374151;">${cat}</td>
+      <td style="padding:10px 12px;font-weight:600;white-space:nowrap;color:#374151;">${name}</td>
       <td style="padding:10px 12px;text-align:center;">
         <span style="display:inline-block;background:#f3f4f6;border-radius:20px;padding:3px 12px;font-weight:700;color:#111827;">${score ?? '—'}</span>
       </td>
       <td style="padding:10px 12px;color:#4b5563;font-size:14px;">${justification ?? ''}</td>
     </tr>`).join('');
 
-  const comparables = (d.comparable_films ?? []).map(f =>
+  const champ = n.championship;
+  const championabilitySection = champ ? `
+    <div style="padding:0 40px 24px;">
+      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Championability
+        <span style="display:inline-block;margin-left:8px;background:${CHAMP_COLORS[champ.rating] || '#6b7280'};color:#fff;font-weight:700;font-size:12px;letter-spacing:1px;padding:3px 12px;border-radius:6px;vertical-align:middle;">${champ.rating || '—'}</span>
+      </h3>
+      ${champ.items.map((it) => `
+        <p style="margin:0 0 10px;"><strong style="color:#374151;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">${it.name}</strong><br>
+          <span style="color:#4b5563;font-size:14px;line-height:1.6;">${it.description ?? ''}</span></p>`).join('')}
+      ${champ.justification ? `<p style="margin:8px 0 0;color:#374151;font-size:14px;line-height:1.7;font-style:italic;">${champ.justification}</p>` : ''}
+    </div>` : '';
+
+  const comparables = (n.comps ?? []).map((f) =>
     `<li style="margin-bottom:4px;"><strong>${f.title}</strong> — $${Number(f.budget).toLocaleString()}</li>`
   ).join('');
 
@@ -58,20 +112,20 @@ function buildHtml({ submitterName, title, evaluationJson }) {
 
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;">
         <span style="display:inline-block;background:${decision.bg};color:#fff;font-weight:700;font-size:15px;letter-spacing:1px;padding:8px 20px;border-radius:6px;">${decision.label}</span>
-        <span style="font-size:28px;font-weight:800;color:#0f172a;">${d.weighted_score ?? '—'}<span style="font-size:16px;color:#6b7280;font-weight:400;">/100</span></span>
+        <span style="font-size:28px;font-weight:800;color:#0f172a;">${n.scoreValue ?? '—'}<span style="font-size:16px;color:#6b7280;font-weight:400;">/100 ${n.scoreLabel.toLowerCase()}</span></span>
       </div>
 
       <!-- Metadata pills -->
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:32px;">
-        ${d.genre ? `<span style="background:#eff6ff;color:#1d4ed8;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;">${d.genre}</span>` : ''}
-        ${d.country ? `<span style="background:#f0fdf4;color:#15803d;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;">${d.country}</span>` : ''}
-        ${d.max_budget ? `<span style="background:#fefce8;color:#a16207;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;">Max Budget: $${Number(d.max_budget).toLocaleString()}</span>` : ''}
+        ${n.genre ? `<span style="background:#eff6ff;color:#1d4ed8;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;">${n.genre}</span>` : ''}
+        ${n.country ? `<span style="background:#f0fdf4;color:#15803d;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;">${n.country}</span>` : ''}
+        ${n.budget ? `<span style="background:#fefce8;color:#a16207;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:600;">Budget: ${n.budget}</span>` : ''}
       </div>
     </div>
 
     <!-- Scores table -->
     <div style="padding:0 40px 24px;">
-      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Category Scores</h3>
+      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">${champ ? 'Craft Scores' : 'Category Scores'}</h3>
       <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
         <thead>
           <tr style="background:#f8fafc;">
@@ -84,11 +138,13 @@ function buildHtml({ submitterName, title, evaluationJson }) {
       </table>
     </div>
 
+    ${championabilitySection}
+
     <!-- Summary -->
-    ${d.summary ? `
+    ${n.summary ? `
     <div style="padding:0 40px 24px;">
-      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Overall Summary</h3>
-      <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${d.summary}</p>
+      <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">${champ ? 'Craft Assessment' : 'Overall Summary'}</h3>
+      <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${n.summary}</p>
     </div>` : ''}
 
     <!-- Comparable films -->

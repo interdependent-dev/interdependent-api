@@ -319,6 +319,32 @@ function extractJson(text) {
   return null;
 }
 
+// BARAKA's decision is a deterministic function of Craft Score + Championability.
+// The model is unreliable at walking that branching matrix (it has mislabeled
+// e.g. craft 57.5 + MEDIUM as CONSIDER when the rubric says PASS), so we compute
+// the decision in code from the rubric and never trust the model's `decision`.
+//   > 80 craft : HIGH/MEDIUM → RECOMMEND ; LOW → CONSIDER
+//   70–80      : HIGH → RECOMMEND ; MEDIUM → CONSIDER ; LOW → PASS
+//   ≤ 70       : HIGH → CONSIDER ; MEDIUM/LOW → PASS
+export function barakaDecision(craftScore, championability) {
+  const c = Number(craftScore);
+  const h = String(championability ?? '').trim().toUpperCase();
+  if (isNaN(c) || !['HIGH', 'MEDIUM', 'LOW'].includes(h)) return null;
+  if (c > 80) return (h === 'HIGH' || h === 'MEDIUM') ? 'RECOMMEND' : 'CONSIDER';
+  if (c > 70) return h === 'HIGH' ? 'RECOMMEND' : (h === 'MEDIUM' ? 'CONSIDER' : 'PASS');
+  return h === 'HIGH' ? 'CONSIDER' : 'PASS';
+}
+
+// Overwrite a BARAKA evaluation's decision with the rubric-computed one. No-op
+// for non-BARAKA shapes (older "Casey" output) or when scores are unparseable.
+function applyDeterministicDecision(ev) {
+  const cs = ev?.evaluation?.craft_score;
+  const cr = ev?.evaluation?.championability_rating;
+  if (!cs || !cr) return;
+  const decision = barakaDecision(cs.final_craft_score, cr.final_championability_rating);
+  if (decision) ev.decision = decision;
+}
+
 /**
  * Send screenplay text to Claude and return { rawText, evaluationJson, modelUsed }.
  * Tries the configured model first, then falls back through known-good models on
@@ -384,6 +410,8 @@ export async function evaluateScreenplay(scriptText) {
     const evaluationJson = extractJson(rawText);
     if (!evaluationJson) {
       console.warn(`Model '${model}' returned unparseable JSON (stop_reason: ${response.stop_reason}) — storing raw text only`);
+    } else {
+      applyDeterministicDecision(evaluationJson); // rubric decides, not the model
     }
     if (model !== env.anthropicModel.trim()) {
       console.warn(`Evaluation completed on fallback model '${model}' — check ANTHROPIC_MODEL ('${env.anthropicModel}')`);

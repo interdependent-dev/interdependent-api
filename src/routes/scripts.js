@@ -61,18 +61,20 @@ router.get('/:id/pdf-url', async (req, res, next) => {
   }
 });
 
-// POST /scripts/:id/retry — re-run a failed evaluation from the stored PDF.
-// Covers outages (e.g. exhausted API credits) without writers resubmitting.
+// POST /scripts/:id/retry        — re-run a failed/unscored evaluation from the stored PDF.
+// POST /scripts/:id/retry?force=1 — re-evaluate ANY submission (even a good one), e.g.
+//   after a rubric/prompt change. Covers outages and deliberate re-scoring.
 router.post('/:id/retry', async (req, res, next) => {
   try {
     const row = await getScriptById(req.params.id);
     if (!row) return next(new AppError('Script not found', 404));
-    // Retryable: failed outright, or "evaluated" with no parsed scores (the
-    // model reply was truncated or malformed, stored as raw text only).
-    const retryable = row.status === 'error'
+    // Retryable: failed outright, "evaluated" with no parsed scores, or an
+    // explicit force re-evaluation.
+    const retryable = req.query.force === '1'
+      || row.status === 'error'
       || (row.status === 'evaluated' && !row.evaluation_json);
     if (!retryable) {
-      return next(new AppError('Only failed or unscored evaluations can be retried', 409));
+      return next(new AppError('Only failed or unscored evaluations can be retried (use ?force=1 to re-evaluate)', 409));
     }
     if (!row.storage_path) {
       return next(new AppError('No stored PDF for this submission — please resubmit the file', 422));

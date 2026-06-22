@@ -66,6 +66,12 @@ Or
 
 Do not reference or recall any previous screenplay evaluations; evaluate only the screenplay provided in the current user message.
 
+READ THE ENTIRE SCREENPLAY, first page to last, before you score anything. The complete script is provided — do not skim, sample, or stop early. Your assessment of story architecture, pacing, climax, and ending, and your summary, must be based only on what is actually written in the script. Never infer, guess, or invent events, characters, dialogue, or an ending that is not present in the text. If the script appears unfinished, evaluate only what is there and say so.
+
+In addition to the scores, produce two fields:
+- "summary": a 4 to 6 sentence plot summary covering the setup, the central conflict, and specifically HOW THE STORY ENDS AND RESOLVES. People will decide whether to read the full script based on this summary, so it must be strictly accurate — describe only events that actually occur in the script, including the real ending. Do not fabricate or guess.
+- "read_check": proof that you read to the end. Provide "final_scene_heading" (the slug line of the final scene), "ending_quote" (15 to 30 words copied WORD FOR WORD, exactly as written, from the last two pages of the screenplay — do not paraphrase or summarize), and "last_line" (the final line of the screenplay).
+
 Return your response in this exact JSON format:
 
 {
@@ -78,7 +84,9 @@ Return your response in this exact JSON format:
 "memorability": { "description": "2-3 concise sentences." },
 "genre_competence": { "description": "2-3 concise sentences." },
 "final_championability_rating": "HIGH/MEDIUM/LOW", "championability_justification": "Briefly summarize why a creative executive would—or would not—feel compelled to advocate for this screenplay based on its distinctiveness, voice, memorability, and genre execution."
-}, }, "budget" : "$XX,XXX,XXX,XXX"
+}, }, "budget" : "$XX,XXX,XXX,XXX",
+"summary": "4-6 sentence plot summary covering setup, central conflict, and how the story actually ends/resolves. Strictly accurate to the screenplay; no invented events or endings.",
+"read_check": { "final_scene_heading": "slug line of the final scene", "ending_quote": "15-30 words copied verbatim from the last two pages of the script", "last_line": "the final line of the screenplay" }
 }
 
 Detailed Scoring & Key Questions
@@ -345,6 +353,26 @@ function applyDeterministicDecision(ev) {
   if (decision) ev.decision = decision;
 }
 
+const normForMatch = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Confirm the model actually read to the end before we trust its scores or summary.
+// Its verbatim ending quote must appear in the back of the script; an early stop or
+// a fabricated ending won't. Lenient (matches a 5-word run) so PDF-extraction quirks
+// don't cause false negatives. Returns true only when the quote is genuinely there.
+export function verifyReadToEnd(ev, scriptText) {
+  const quote = ev?.read_check?.ending_quote;
+  if (!quote || !scriptText) return false;
+  const qWords = normForMatch(quote).split(' ').filter(Boolean);
+  if (qWords.length < 4) return false;
+  const full = normForMatch(scriptText);
+  const back = full.slice(Math.floor(full.length * 0.55)); // last ~45% of the script
+  const N = Math.min(5, qWords.length);
+  for (let i = 0; i + N <= qWords.length; i++) {
+    if (back.includes(qWords.slice(i, i + N).join(' '))) return true;
+  }
+  return false;
+}
+
 /**
  * Send screenplay text to Claude and return { rawText, evaluationJson, modelUsed }.
  * Tries the configured model first, then falls back through known-good models on
@@ -353,11 +381,18 @@ function applyDeterministicDecision(ev) {
  * Throws AppError when every candidate fails.
  */
 export async function evaluateScreenplay(scriptText) {
-  const truncated = scriptText.length > 100_000
-    ? scriptText.slice(0, 100_000) + '\n\n[...script truncated for length...]'
+  // Send the WHOLE screenplay. The model's context (~200k tokens ≈ ~800k chars)
+  // easily holds a feature script (~120-200k chars); this cap only guards against
+  // a pathological non-feature upload, far above any real screenplay. Reading the
+  // full script — the third act and ending especially — is essential: structure/
+  // climax/ending scores and the summary are worthless on a partial read.
+  const MAX_CHARS = 600_000;
+  const scriptForModel = scriptText.length > MAX_CHARS
+    ? scriptText.slice(0, MAX_CHARS) + '\n\n[...exceeded maximum length...]'
     : scriptText;
 
   const failures = [];
+  let fallbackResult = null; // best parsed-but-unverified result, used only if nothing verifies
 
   for (const model of candidateModels()) {
     let response;
@@ -378,7 +413,7 @@ export async function evaluateScreenplay(scriptText) {
           messages: [
             {
               role: 'user',
-              content: `Please evaluate the following screenplay:\n\n${truncated}`,
+              content: `Please evaluate the following screenplay:\n\n${scriptForModel}`,
             },
           ],
         },
@@ -407,19 +442,36 @@ export async function evaluateScreenplay(scriptText) {
       continue;
     }
 
-    const evaluationJson = extractJson(rawText);
-    if (!evaluationJson) {
-      console.warn(`Model '${model}' returned unparseable JSON (stop_reason: ${response.stop_reason}) — storing raw text only`);
-    } else {
-      applyDeterministicDecision(evaluationJson); // rubric decides, not the model
-    }
     if (model !== env.anthropicModel.trim()) {
       console.warn(`Evaluation completed on fallback model '${model}' — check ANTHROPIC_MODEL ('${env.anthropicModel}')`);
     }
 
-    return { rawText, evaluationJson, modelUsed: model };
+    const evaluationJson = extractJson(rawText);
+    if (!evaluationJson) {
+      console.warn(`Model '${model}' returned unparseable JSON (stop_reason: ${response.stop_reason}) — storing raw text only`);
+      fallbackResult = fallbackResult || { rawText, evaluationJson: null, modelUsed: model };
+      failures.push(`${model} → unparseable JSON`);
+      continue;
+    }
+
+    applyDeterministicDecision(evaluationJson); // rubric decides, not the model
+    const verified = verifyReadToEnd(evaluationJson, scriptForModel);
+    evaluationJson.read_verified = verified;
+    if (verified) {
+      return { rawText, evaluationJson, modelUsed: model };
+    }
+    // Parsed, but the verbatim ending quote isn't in the back of the script — the
+    // model may have stopped early or fabricated the ending. Prefer a verified
+    // candidate; keep this flagged as a fallback and try the next model.
+    console.warn(`Model '${model}' failed the read-check (ending quote not found in script)`);
+    failures.push(`${model} → read-check failed`);
+    fallbackResult = { rawText, evaluationJson, modelUsed: model }; // a parsed result beats a null one
   }
 
+  if (fallbackResult) {
+    console.warn('Returning an evaluation flagged read_verified=false — no candidate confirmed reading to the end');
+    return fallbackResult;
+  }
   throw new AppError(`Evaluation failed on all models — ${failures.join('; ')}`, 502);
 }
 

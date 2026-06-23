@@ -155,7 +155,11 @@ export async function registerComplete(req, res, next) {
     return next(new AppError(`Could not store credential: ${err.message}`, 500));
   }
 
-  res.status(201).json({ readerId: reader.id, handle: reader.handle, displayName: reader.display_name });
+  // Mint an action token right away — the create() ceremony just proved user
+  // presence, so the first write (e.g. Champion) shouldn't demand a second
+  // passkey prompt immediately after registering.
+  const actionToken = issueActionToken(reader);
+  res.status(201).json({ actionToken, readerId: reader.id, handle: reader.handle, displayName: reader.display_name });
 }
 
 // ─── Authentication ──────────────────────────────────────────────────────────

@@ -48,7 +48,7 @@ function normalizeForEmail(d) {
       decision: d.decision, genre: d.genre, country: d.country, budget: d.budget || null,
       scoreValue: cs.final_craft_score, scoreLabel: 'Craft Score',
       categories, championship: (rating || items.length) ? { rating, items, justification: cr.championability_justification } : null,
-      comps: null, summary: d.summary || cs.craft_justification || '',
+      comps: null, summary: d.logline || d.summary || cs.craft_justification || '',
       craftAssessment: cs.craft_justification || '', readVerified: d.read_verified,
     };
   }
@@ -60,7 +60,7 @@ function normalizeForEmail(d) {
     decision: d.decision, genre: d.genre, country: d.country,
     budget: d.max_budget != null ? `$${Number(d.max_budget).toLocaleString()}` : null,
     scoreValue: d.weighted_score, scoreLabel: 'Weighted Score',
-    categories, championship: null, comps: d.comparable_films || null, summary: d.summary || '',
+    categories, championship: null, comps: d.comparable_films || null, summary: d.logline || d.summary || '',
     craftAssessment: '', readVerified: undefined,
   };
 }

@@ -139,11 +139,11 @@ export async function getChampions() {
   return data || [];
 }
 
-// id → title map for joining analytics (light; skips the big evaluation_json).
+// id → {title, page_count} for joining analytics (light; skips the big evaluation_json).
 export async function getScriptTitles() {
   const out = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('scripts').select('id, title').range(from, from + 999);
+    const { data, error } = await supabase.from('scripts').select('id, title, page_count').range(from, from + 999);
     if (error) throw new Error(`DB getScriptTitles: ${error.message}`);
     out.push(...(data || []));
     if (!data || data.length < 1000) break;

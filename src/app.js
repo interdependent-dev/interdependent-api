@@ -7,6 +7,7 @@ import { pingModel, candidateModels } from './services/anthropicService.js';
 import authRouter from './routes/auth.js';
 import evaluateRouter from './routes/evaluate.js';
 import scriptsRouter from './routes/scripts.js';
+import shareRouter from './routes/share.js';
 import readersRouter from './routes/readers.js';
 import leaderboardRouter from './routes/leaderboard.js';
 
@@ -54,6 +55,7 @@ app.get('/health', async (req, res, next) => {
 app.use('/auth', authRouter);
 app.use('/evaluate', evaluateRouter);
 app.use('/scripts', scriptsRouter);
+app.use('/share', shareRouter); // public, no auth — read-only recommendation view
 app.use('/readers', readersRouter);
 app.use('/leaderboard', leaderboardRouter);
 

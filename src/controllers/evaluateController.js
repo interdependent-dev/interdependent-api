@@ -24,30 +24,36 @@ const submitSchema = z.object({
  * alerts the admin — a submission can never silently vanish.
  * Exported so the retry route can re-run stored submissions.
  */
-export async function runEvaluation({ script, pdfText, name, email, title }) {
+export async function runEvaluation({ script, pdfText, name, email, title, notify = true }) {
   try {
     const { rawText, evaluationJson, modelUsed } = await evaluateScreenplay(pdfText);
 
     await updateScriptEvaluation({ id: script.id, evaluationResult: rawText, evaluationJson });
     console.log(`Script ${script.id} ("${title}") evaluated by ${modelUsed}`);
 
-    sendEvaluationEmail({
-      submitterName: name,
-      submitterEmail: email,
-      title,
-      evaluationJson,
-      rawText,
-    }).catch((err) => console.error('Evaluation email failed:', err.message));
+    // notify=false on admin re-evaluations (rubric conversions, etc.) — the
+    // submitter already received their result and shouldn't be re-emailed.
+    if (notify) {
+      sendEvaluationEmail({
+        submitterName: name,
+        submitterEmail: email,
+        title,
+        evaluationJson,
+        rawText,
+      }).catch((err) => console.error('Evaluation email failed:', err.message));
+    }
   } catch (err) {
     const reason = err.message || 'Unknown evaluation error';
     console.error(`Script ${script.id} ("${title}") evaluation failed: ${reason}`);
     await markScriptError({ id: script.id, reason }).catch(() => {});
-    sendFailureAlert({
-      title,
-      submitterName: name,
-      submitterEmail: email,
-      reason,
-    }).catch(() => {});
+    if (notify) {
+      sendFailureAlert({
+        title,
+        submitterName: name,
+        submitterEmail: email,
+        reason,
+      }).catch(() => {});
+    }
   }
 }
 

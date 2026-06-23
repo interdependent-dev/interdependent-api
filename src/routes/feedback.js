@@ -46,10 +46,13 @@ router.post('/:scriptId', requireActionToken, async (req, res, next) => {
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 
-// List a script's feedback (gated — dashboard / admin), with signed audio URLs.
+// List a script's feedback + any persisted calibration (gated — dashboard).
 router.get('/:scriptId', requireAuth, async (req, res, next) => {
   try {
-    const fb = await listFeedback(req.params.scriptId);
+    const [fb, script] = await Promise.all([
+      listFeedback(req.params.scriptId),
+      getScriptById(req.params.scriptId).catch(() => null),
+    ]);
     const out = await Promise.all(fb.map(async (f) => ({
       id: f.id,
       reader: f.readers?.display_name || f.readers?.handle || 'A reader',
@@ -60,7 +63,7 @@ router.get('/:scriptId', requireAuth, async (req, res, next) => {
       transcript: f.transcript,
       audioUrl: f.audio_path ? await createSignedPdfUrl(f.audio_path, 3600).catch(() => null) : null,
     })));
-    res.json({ feedback: out });
+    res.json({ feedback: out, calibration: script?.evaluation_json?.calibration ?? null });
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 

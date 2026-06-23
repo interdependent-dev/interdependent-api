@@ -1,7 +1,14 @@
 import { Resend } from 'resend';
 import { env } from '../config/env.js';
+import { translateEmail } from './anthropicService.js';
 
 const resend = new Resend(env.resendApiKey);
+
+// True when the screenplay's language is anything other than English.
+function isNonEnglish(language) {
+  const l = String(language || '').trim().toLowerCase();
+  return l !== '' && !l.startsWith('en'); // "English", "en", "en-US" → English
+}
 
 const DECISION_COLORS = {
   RECOMMEND: { bg: '#16a34a', label: 'RECOMMEND' },
@@ -213,31 +220,40 @@ export async function sendEvaluationEmail({ submitterName, submitterEmail, title
     'utf-8',
   ).toString('base64');
 
-  const recipients = [submitterEmail];
-  if (env.adminEmail && env.adminEmail !== submitterEmail) {
-    recipients.push(env.adminEmail);
-  }
+  const adminEmail = env.adminEmail && env.adminEmail !== submitterEmail ? env.adminEmail : null;
 
   // buildHtml needs parsed JSON; with raw-text-only results send a plain version
   const html = evaluationJson
     ? buildHtml({ submitterName, title, evaluationJson })
     : `<p>Screenplay evaluation for <strong>${title}</strong> (submitted by ${submitterName}) is attached.</p>`;
 
-  try {
-    await resend.emails.send({
-      from: env.emailFrom,
-      to: recipients,
-      subject,
-      html,
-      attachments: [
-        {
-          filename: `${title.replace(/[^a-z0-9]/gi, '_')}_evaluation.txt`,
-          content: attachmentContent,
-        },
-      ],
-    });
-  } catch (err) {
-    console.error('Failed to send evaluation email:', err.message);
+  const attachments = [{
+    filename: `${title.replace(/[^a-z0-9]/gi, '_')}_evaluation.txt`,
+    content: attachmentContent,
+  }];
+
+  // The platform keeps the evaluation in English; the WRITER receives it in the
+  // screenplay's language so they can read it natively. The admin copy stays English.
+  let writerSubject = subject, writerHtml = html;
+  if (evaluationJson && isNonEnglish(evaluationJson.language)) {
+    try {
+      const t = await translateEmail({ subject, html, language: evaluationJson.language });
+      writerSubject = t.subject; writerHtml = t.html;
+    } catch (err) {
+      console.error(`Email translation to '${evaluationJson.language}' failed — sending English:`, err.message);
+    }
+  }
+
+  const send = (to, subj, body) => resend.emails.send({
+    from: env.emailFrom, to, subject: subj, html: body, attachments,
+  }).catch((err) => console.error(`Failed to send evaluation email to ${to}:`, err.message));
+
+  if (writerHtml !== html) {
+    // translated writer copy + English admin copy
+    await send([submitterEmail], writerSubject, writerHtml);
+    if (adminEmail) await send([adminEmail], subject, html);
+  } else {
+    await send(adminEmail ? [submitterEmail, adminEmail] : [submitterEmail], subject, html);
   }
 }
 

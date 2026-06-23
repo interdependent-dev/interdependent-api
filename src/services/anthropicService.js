@@ -68,6 +68,8 @@ Do not reference or recall any previous screenplay evaluations; evaluate only th
 
 READ THE ENTIRE SCREENPLAY, first page to last, before you score anything. The complete script is provided — do not skim, sample, or stop early. Your assessment of story architecture, pacing, climax, and ending, and your summary, must be based only on what is actually written in the script. Never infer, guess, or invent events, characters, dialogue, or an ending that is not present in the text. If the script appears unfinished, evaluate only what is there and say so.
 
+The screenplay may be written in ANY language. Read and evaluate it in its original language, applying the same rubric. However, write ALL of your output — every score rationale, the summary, the logline, every justification, the genre, and all other text — in ENGLISH, no matter what language the screenplay is written in. The ONLY exceptions are the read_check fields "ending_quote" and "last_line", which must be copied verbatim in the screenplay's original language and writing system. Also report "language": the primary language the screenplay is written in, given as its English name (e.g. "English", "Spanish", "French", "Mandarin", "Korean").
+
 In addition to the scores, produce three fields:
 - "summary": a 4 to 6 sentence plot summary covering the setup, the central conflict, and specifically HOW THE STORY ENDS AND RESOLVES. People will decide whether to read the full script based on this summary, so it must be strictly accurate — describe only events that actually occur in the script, including the real ending. Do not fabricate or guess.
 - "logline": a short, enticing streaming-style logline (Netflix / Apple TV style). 1 to 2 sentences, ~25 to 45 words, present tense. Open on the protagonist and the inciting situation, then turn to the central tension or hook. NO SPOILERS — never reveal the ending, the resolution, a twist, or who the villain turns out to be; stop at the point of tension. Evocative and specific, accurate to the script, no genre labels or title. Example voice: "After an assault the system refuses to punish, a horror-obsessed young woman fights to reclaim her life — unaware that the instructor teaching her self-defense hides a darkness of his own."
@@ -88,7 +90,8 @@ Return your response in this exact JSON format:
 } }, "budget" : "$XX,XXX,XXX,XXX",
 "summary": "4-6 sentence plot summary covering setup, central conflict, and how the story actually ends/resolves. Strictly accurate to the screenplay; no invented events or endings.",
 "logline": "short spoiler-free streaming-style logline, 1-2 sentences, present tense, ending at the hook",
-"read_check": { "final_scene_heading": "slug line of the final scene", "ending_quote": "15-30 words copied verbatim from the last two pages of the script", "last_line": "the final line of the screenplay" }
+"read_check": { "final_scene_heading": "slug line of the final scene", "ending_quote": "15-30 words copied verbatim from the last two pages of the script", "last_line": "the final line of the screenplay" },
+"language": "the screenplay's primary language as an English name, e.g. English / Spanish / French / Mandarin"
 }
 
 Detailed Scoring & Key Questions
@@ -391,22 +394,43 @@ function applyDeterministicDecision(ev) {
   if (decision) ev.decision = decision;
 }
 
-const normForMatch = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+// Unicode-aware: fold accents/diacritics, keep letters & numbers of ANY script
+// (Latin, Cyrillic, CJK, Arabic, etc.), drop everything else. Critical for
+// verifying non-English screenplays — the old [a-z0-9] form deleted them entirely.
+const normForMatch = (s) => (s || '')
+  .toLowerCase()
+  .normalize('NFD').replace(/\p{M}+/gu, '')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .replace(/\s+/g, ' ').trim();
 
 // Confirm the model actually read to the end before we trust its scores or summary.
 // Its verbatim ending quote must appear in the back of the script; an early stop or
-// a fabricated ending won't. Lenient (matches a 5-word run) so PDF-extraction quirks
-// don't cause false negatives. Returns true only when the quote is genuinely there.
+// a fabricated ending won't. Lenient so PDF-extraction quirks don't false-negative,
+// and language-agnostic: a word-run match for spaced languages, plus a character-run
+// match for scripts without word spacing (e.g. Chinese/Japanese).
 export function verifyReadToEnd(ev, scriptText) {
   const quote = ev?.read_check?.ending_quote;
   if (!quote || !scriptText) return false;
-  const qWords = normForMatch(quote).split(' ').filter(Boolean);
-  if (qWords.length < 4) return false;
   const full = normForMatch(scriptText);
   const back = full.slice(Math.floor(full.length * 0.55)); // last ~45% of the script
-  const N = Math.min(5, qWords.length);
-  for (let i = 0; i + N <= qWords.length; i++) {
-    if (back.includes(qWords.slice(i, i + N).join(' '))) return true;
+  const nq = normForMatch(quote);
+
+  // Word-shingle match — spaced languages (English, Spanish, French, Russian…)
+  const qWords = nq.split(' ').filter(Boolean);
+  if (qWords.length >= 4) {
+    const N = Math.min(5, qWords.length);
+    for (let i = 0; i + N <= qWords.length; i++) {
+      if (back.includes(qWords.slice(i, i + N).join(' '))) return true;
+    }
+  }
+  // Character-run match — scripts without word spacing (CJK, etc.)
+  const cq = nq.replace(/ /g, '');
+  const cb = back.replace(/ /g, '');
+  if (cq.length >= 8) {
+    const W = Math.min(12, cq.length);
+    for (let i = 0; i + W <= cq.length; i += Math.max(1, Math.floor(W / 2))) {
+      if (cb.includes(cq.slice(i, i + W))) return true;
+    }
   }
   return false;
 }
@@ -587,6 +611,45 @@ export async function generateLogline(scriptText) {
     return fallback;
   }
   throw new AppError(`Logline generation failed — ${failures.join('; ')}`, 502);
+}
+
+/**
+ * Translate a built evaluation email into the writer's language. The platform and
+ * database keep the English evaluation; only the writer's emailed copy is translated.
+ * Returns { subject, html }; throws on failure so the caller can fall back to English.
+ */
+export async function translateEmail({ subject, html, language }) {
+  const system = `You translate a screenplay-evaluation email for the writer into ${language}. Translate ALL human-readable English text into natural, professional ${language}. CRITICAL RULES:
+- Preserve every HTML tag, attribute, inline CSS style, URL and email address EXACTLY. Translate only the visible text between tags.
+- Keep all numbers, scores and percentages exactly as written.
+- Do NOT translate proper nouns: the screenplay title, any film titles, person names, or the brand name "INTERDEPENDENT". Leave the decision label (RECOMMEND / CONSIDER / PASS) in English.
+Output EXACTLY in this format and nothing else:
+SUBJECT: <translated subject line>
+---HTML---
+<the full translated HTML document>`;
+  const user = `Subject: ${subject}\n\nHTML:\n${html}`;
+  // Haiku first (cheap, multilingual, plenty for translation), then the eval models.
+  const models = [...new Set(['claude-haiku-4-5-20251001', env.anthropicModel.trim(), 'claude-opus-4-8'])];
+  let lastErr;
+  for (const model of models) {
+    try {
+      const resp = await anthropic.messages.create(
+        { model, max_tokens: 16_000, system, messages: [{ role: 'user', content: user }] },
+        { timeout: 120_000, maxRetries: 1 },
+      );
+      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const i = text.indexOf('---HTML---');
+      if (i === -1) { lastErr = new Error('translation format missing'); continue; }
+      const subj = text.slice(0, i).replace(/^\s*SUBJECT:\s*/i, '').trim();
+      const body = text.slice(i + '---HTML---'.length).trim();
+      if (body.length > 50) return { subject: subj || subject, html: body };
+      lastErr = new Error('translation too short');
+    } catch (err) {
+      if (err instanceof Anthropic.AuthenticationError) throw err;
+      lastErr = err;
+    }
+  }
+  throw new AppError(`Email translation failed — ${lastErr?.message || 'unknown'}`, 502);
 }
 
 /**

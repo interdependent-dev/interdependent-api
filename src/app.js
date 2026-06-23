@@ -12,6 +12,7 @@ import eventsRouter from './routes/events.js';
 import analyticsRouter from './routes/analytics.js';
 import readersRouter from './routes/readers.js';
 import leaderboardRouter from './routes/leaderboard.js';
+import feedbackRouter from './routes/feedback.js';
 
 const app = express();
 
@@ -20,6 +21,9 @@ app.set('trust proxy', 1);
 
 // Global middleware
 app.use(corsMiddleware);
+// Reader feedback can carry a base64 voice note — parse it with a larger limit
+// BEFORE the global 100kb json parser (which would otherwise 413 the request).
+app.use('/feedback', express.json({ limit: '8mb' }), feedbackRouter);
 app.use(express.json());
 app.use(cookieParser());
 

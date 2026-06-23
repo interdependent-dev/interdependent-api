@@ -652,6 +652,59 @@ SUBJECT: <translated subject line>
   throw new AppError(`Email translation failed — ${lastErr?.message || 'unknown'}`, 502);
 }
 
+const RECALIBRATE_PROMPT = `You are re-calibrating a screenplay's evaluation using feedback from REAL human readers who actually read it. Those readers are the GROUND TRUTH — especially for Championability (Distinctiveness, Writer's Voice, Memorability, Genre Competence), which measures whether a real creative executive would advocate for the script. The AI's original read is only a starting point; wherever the readers diverge from it, trust the readers and explain the gap.
+
+You receive the AI evaluation and the readers' structured feedback (a champion verdict, optional 1-to-5 dimension ratings, and written or spoken notes).
+
+Produce a re-calibrated assessment, weighting the human readers heavily on Championability. Output ONLY this JSON, nothing else:
+{
+  "championability": {
+    "ai_rating": "the AI's original HIGH/MEDIUM/LOW",
+    "reader_rating": "HIGH/MEDIUM/LOW implied by the readers' verdicts and ratings",
+    "calibrated_rating": "HIGH/MEDIUM/LOW — your re-calibrated rating, with readers as ground truth",
+    "distinctiveness": "1-2 sentences reconciling AI vs readers on this dimension",
+    "writers_voice": "1-2 sentences",
+    "memorability": "1-2 sentences",
+    "genre_competence": "1-2 sentences",
+    "justification": "why the calibrated rating, grounded in the reader feedback"
+  },
+  "craft_note": "brief note if the feedback bears on craft, else empty string",
+  "divergence": "where readers and the AI most agreed and most diverged",
+  "summary": "2-3 plain-language sentences for the team"
+}`;
+
+/**
+ * Re-calibrate a screenplay's evaluation against real reader feedback — especially
+ * the Championability dimensions, where human readers are the ground truth.
+ * Returns the calibration object; the caller persists it on evaluation_json.
+ */
+export async function recalibrateWithFeedback({ title, evaluation, feedback }) {
+  const fbText = (feedback || []).map((f, i) => {
+    const dims = f.dimensions && typeof f.dimensions === 'object'
+      ? Object.entries(f.dimensions).filter(([, v]) => v != null).map(([k, v]) => `${k}: ${v}/5`).join(', ') : '';
+    return `Reader ${i + 1} — verdict: ${f.verdict || 'n/a'}${dims ? `; ratings: ${dims}` : ''}${f.note ? `; note: "${String(f.note).slice(0, 1500)}"` : ''}`;
+  }).join('\n');
+  const user = `SCREENPLAY: ${title}\n\nAI EVALUATION (JSON):\n${JSON.stringify(evaluation).slice(0, 12000)}\n\nHUMAN READER FEEDBACK (${(feedback || []).length} reader${feedback && feedback.length === 1 ? '' : 's'}):\n${fbText}`;
+  const models = [...new Set([env.anthropicModel.trim(), 'claude-opus-4-8', 'claude-haiku-4-5-20251001'])];
+  let lastErr;
+  for (const model of models) {
+    try {
+      const resp = await anthropic.messages.create(
+        { model, max_tokens: 2000, system: [{ type: 'text', text: RECALIBRATE_PROMPT, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: user }] },
+        { timeout: 120_000, maxRetries: 1 },
+      );
+      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const json = extractJson(text);
+      if (json && json.championability) return json;
+      lastErr = new Error('no calibration json');
+    } catch (err) {
+      if (err instanceof Anthropic.AuthenticationError) throw err;
+      lastErr = err;
+    }
+  }
+  throw new AppError(`Re-calibration failed — ${lastErr?.message || 'unknown'}`, 502);
+}
+
 /**
  * One-token probe of a model, for the deep health check. Never throws.
  */

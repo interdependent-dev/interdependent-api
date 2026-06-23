@@ -139,6 +139,46 @@ export async function getChampions() {
   return data || [];
 }
 
+// ── reader feedback ──────────────────────────────────────────────────────────
+export async function insertFeedback(row) {
+  const { data, error } = await supabase.from('reader_feedback').insert({
+    script_id: row.scriptId, reader_id: row.readerId ?? null,
+    champion_verdict: row.championVerdict ?? null, dimensions: row.dimensions ?? null,
+    text: row.text ?? null, transcript: row.transcript ?? null,
+  }).select('id').single();
+  if (error) throw new Error(`DB insertFeedback: ${error.message}`);
+  return data.id;
+}
+
+export async function setFeedbackAudio({ id, audioPath }) {
+  const { error } = await supabase.from('reader_feedback').update({ audio_path: audioPath }).eq('id', id);
+  if (error) throw new Error(`DB setFeedbackAudio: ${error.message}`);
+}
+
+// Voice notes live in the existing scripts bucket under a feedback/ prefix.
+export async function uploadFeedbackAudio({ scriptId, feedbackId, buffer, ext }) {
+  const path = `feedback/${scriptId}/${feedbackId}.${ext === 'mp4' ? 'mp4' : 'webm'}`;
+  const { error } = await supabase.storage.from('scripts')
+    .upload(path, buffer, { contentType: ext === 'mp4' ? 'audio/mp4' : 'audio/webm', upsert: true });
+  if (error) throw new Error(`Storage uploadFeedbackAudio: ${error.message}`);
+  return path;
+}
+
+export async function listFeedback(scriptId) {
+  const { data, error } = await supabase.from('reader_feedback')
+    .select('id, reader_id, created_at, champion_verdict, dimensions, text, audio_path, transcript, readers(display_name, handle)')
+    .eq('script_id', scriptId).order('created_at', { ascending: false });
+  if (error) throw new Error(`DB listFeedback: ${error.message}`);
+  return data || [];
+}
+
+// Aggregate feedback counts per script (for the analytics dashboard).
+export async function getFeedbackCounts() {
+  const { data, error } = await supabase.from('reader_feedback').select('script_id, champion_verdict');
+  if (error) throw new Error(`DB getFeedbackCounts: ${error.message}`);
+  return data || [];
+}
+
 // id → {title, page_count} for joining analytics (light; skips the big evaluation_json).
 export async function getScriptTitles() {
   const out = [];

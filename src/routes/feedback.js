@@ -1,0 +1,91 @@
+import { Router } from 'express';
+import { requireAuth } from '../middleware/requireAuth.js';
+import { requireActionToken } from '../middleware/requireActionToken.js';
+import {
+  getScriptById, insertFeedback, setFeedbackAudio, uploadFeedbackAudio, listFeedback,
+  createSignedPdfUrl, mergeScriptEvaluationJson,
+} from '../services/supabaseService.js';
+import { recalibrateWithFeedback } from '../services/anthropicService.js';
+import { AppError } from '../middleware/errorHandler.js';
+
+const router = Router();
+const UUID = /^[0-9a-fA-F-]{36}$/;
+
+// Reader submits feedback — authenticated by a passkey action token (same as
+// Champion). Body may carry a base64 voice note (this router is mounted with a
+// larger JSON limit). Stored against the script + the reader.
+router.post('/:scriptId', requireActionToken, async (req, res, next) => {
+  try {
+    const scriptId = req.params.scriptId;
+    if (!UUID.test(scriptId)) return next(new AppError('Invalid script id', 400));
+    const { championVerdict, dimensions, text, transcript, audioBase64, audioExt } = req.body || {};
+    if (!championVerdict && !text && !transcript && !audioBase64) {
+      return next(new AppError('Feedback is empty', 400));
+    }
+    const script = await getScriptById(scriptId).catch(() => null);
+    if (!script) return next(new AppError('Script not found', 404));
+
+    const id = await insertFeedback({
+      scriptId, readerId: req.reader.id,
+      championVerdict: typeof championVerdict === 'string' ? championVerdict.slice(0, 24) : null,
+      dimensions: dimensions && typeof dimensions === 'object' ? dimensions : null,
+      text: typeof text === 'string' ? text.slice(0, 8000) : null,
+      transcript: typeof transcript === 'string' ? transcript.slice(0, 16000) : null,
+    });
+
+    if (audioBase64) {
+      try {
+        const buf = Buffer.from(String(audioBase64).split(',').pop(), 'base64');
+        if (buf.length > 1000 && buf.length < 8_000_000) {
+          const path = await uploadFeedbackAudio({ scriptId, feedbackId: id, buffer: buf, ext: audioExt });
+          await setFeedbackAudio({ id, audioPath: path });
+        }
+      } catch (e) { console.error('feedback audio upload failed:', e.message); }
+    }
+    res.status(201).json({ id });
+  } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
+});
+
+// List a script's feedback (gated — dashboard / admin), with signed audio URLs.
+router.get('/:scriptId', requireAuth, async (req, res, next) => {
+  try {
+    const fb = await listFeedback(req.params.scriptId);
+    const out = await Promise.all(fb.map(async (f) => ({
+      id: f.id,
+      reader: f.readers?.display_name || f.readers?.handle || 'A reader',
+      createdAt: f.created_at,
+      championVerdict: f.champion_verdict,
+      dimensions: f.dimensions,
+      text: f.text,
+      transcript: f.transcript,
+      audioUrl: f.audio_path ? await createSignedPdfUrl(f.audio_path, 3600).catch(() => null) : null,
+    })));
+    res.json({ feedback: out });
+  } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
+});
+
+// Re-calibrate the AI evaluation against reader feedback (gated) — especially
+// Championability, where the readers are ground truth. Persists the calibration.
+router.post('/:scriptId/recalibrate', requireAuth, async (req, res, next) => {
+  try {
+    const scriptId = req.params.scriptId;
+    const script = await getScriptById(scriptId).catch(() => null);
+    if (!script || !script.evaluation_json) return next(new AppError('Script has no evaluation', 404));
+    const fb = await listFeedback(scriptId);
+    if (!fb.length) return next(new AppError('No reader feedback to calibrate from yet', 400));
+
+    const ev = script.evaluation_json;
+    const calibration = await recalibrateWithFeedback({
+      title: script.title,
+      evaluation: ev.evaluation || { scores: ev.scores, weighted_score: ev.weighted_score, decision: ev.decision },
+      feedback: fb.map((f) => ({ verdict: f.champion_verdict, dimensions: f.dimensions, note: f.text || f.transcript || '' })),
+    });
+    await mergeScriptEvaluationJson({
+      id: scriptId,
+      patch: { calibration: { ...calibration, readerCount: fb.length, calibratedAt: new Date().toISOString() } },
+    });
+    res.json({ calibration, readerCount: fb.length });
+  } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
+});
+
+export default router;

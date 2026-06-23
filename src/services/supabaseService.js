@@ -107,21 +107,36 @@ export async function insertReadEvent(e) {
   if (error) throw new Error(`DB insertReadEvent: ${error.message}`);
 }
 
-// Pull events (optionally since a date) for dashboard aggregation, paged past
-// Supabase's 1000-row default cap.
-export async function listReadEvents({ sinceISO } = {}) {
+// Pull events (optionally since a date, or for one script) for dashboard
+// aggregation, paged past Supabase's 1000-row default cap.
+export async function listReadEvents({ sinceISO, scriptId } = {}) {
   const out = [];
   for (let from = 0; ; from += 1000) {
     let qy = supabase.from('read_events')
       .select('event_type, script_id, session_id, reader_id, recommender, source, page, total_pages, depth_pct, seconds, ts')
       .order('ts', { ascending: true }).range(from, from + 999);
     if (sinceISO) qy = qy.gte('ts', sinceISO);
+    if (scriptId) qy = qy.eq('script_id', scriptId);
     const { data, error } = await qy;
     if (error) throw new Error(`DB listReadEvents: ${error.message}`);
     out.push(...(data || []));
     if (!data || data.length < 1000) break;
   }
   return out;
+}
+
+// All readers (passkey identities) — for resolving names in analytics.
+export async function getReaders() {
+  const { data, error } = await supabase.from('readers').select('id, handle, display_name');
+  if (error) throw new Error(`DB getReaders: ${error.message}`);
+  return data || [];
+}
+
+// All champions (reader_leaderboard) — the authoritative "who championed what".
+export async function getChampions() {
+  const { data, error } = await supabase.from('reader_leaderboard').select('reader_id, script_id, added_at');
+  if (error) throw new Error(`DB getChampions: ${error.message}`);
+  return data || [];
 }
 
 // id → title map for joining analytics (light; skips the big evaluation_json).

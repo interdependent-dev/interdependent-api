@@ -6,9 +6,11 @@ import {
   downloadPDF,
   createSignedPdfUrl,
   markScriptProcessing,
+  mergeScriptEvaluationJson,
 } from '../services/supabaseService.js';
 import { extractText } from '../services/pdfService.js';
 import { runEvaluation } from '../controllers/evaluateController.js';
+import { generateLogline } from '../services/anthropicService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -93,6 +95,43 @@ router.post('/:id/retry', async (req, res, next) => {
       email: row.users?.email ?? '',
       title: row.title,
     });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+});
+
+// POST /scripts/:id/logline — full-read pass that ADDS a spoiler-free logline
+// (verified against the ending) without re-scoring. Backfills loglines onto
+// already-scored submissions; existing scores/decision/summary are untouched.
+router.post('/:id/logline', async (req, res, next) => {
+  try {
+    const row = await getScriptById(req.params.id);
+    if (!row) return next(new AppError('Script not found', 404));
+    if (!row.evaluation_json) {
+      return next(new AppError('Script has no evaluation to attach a logline to', 409));
+    }
+    if (!req.query.force && row.evaluation_json.logline) {
+      return next(new AppError('Script already has a logline (use ?force=1 to regenerate)', 409));
+    }
+    if (!row.storage_path) {
+      return next(new AppError('No stored PDF for this submission', 422));
+    }
+
+    const buffer = await downloadPDF(row.storage_path);
+    const pdfData = await extractText(buffer);
+
+    res.status(202).json({ id: row.id, status: 'generating-logline', title: row.title });
+
+    generateLogline(pdfData.text)
+      .then((r) =>
+        mergeScriptEvaluationJson({
+          id: row.id,
+          patch: { logline: r.logline, read_verified: r.readVerified },
+        }).then(() =>
+          console.log(`Logline for ${row.id} ("${row.title}") by ${r.modelUsed} (verified: ${r.readVerified})`),
+        ),
+      )
+      .catch((err) => console.error(`Logline for ${row.id} ("${row.title}") failed: ${err.message}`));
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

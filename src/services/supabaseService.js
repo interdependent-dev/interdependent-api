@@ -74,6 +74,20 @@ export async function updateScriptEvaluation({ id, evaluationResult, evaluationJ
 }
 
 /**
+ * Merge a few keys into an existing evaluation_json without disturbing the rest
+ * (scores, decision, etc.). Used to backfill loglines onto already-scored rows.
+ */
+export async function mergeScriptEvaluationJson({ id, patch }) {
+  const { data, error: selErr } = await supabase
+    .from('scripts').select('evaluation_json').eq('id', id).single();
+  if (selErr) throw new Error(`DB mergeScriptEvaluationJson select: ${selErr.message}`);
+  const merged = { ...(data?.evaluation_json || {}), ...patch };
+  const { error } = await supabase
+    .from('scripts').update({ evaluation_json: merged }).eq('id', id);
+  if (error) throw new Error(`DB mergeScriptEvaluationJson update: ${error.message}`);
+}
+
+/**
  * Persist the Supabase Storage path back to the script row after upload.
  */
 export async function updateScriptStoragePath({ id, storagePath }) {

@@ -68,8 +68,9 @@ Do not reference or recall any previous screenplay evaluations; evaluate only th
 
 READ THE ENTIRE SCREENPLAY, first page to last, before you score anything. The complete script is provided — do not skim, sample, or stop early. Your assessment of story architecture, pacing, climax, and ending, and your summary, must be based only on what is actually written in the script. Never infer, guess, or invent events, characters, dialogue, or an ending that is not present in the text. If the script appears unfinished, evaluate only what is there and say so.
 
-In addition to the scores, produce two fields:
+In addition to the scores, produce three fields:
 - "summary": a 4 to 6 sentence plot summary covering the setup, the central conflict, and specifically HOW THE STORY ENDS AND RESOLVES. People will decide whether to read the full script based on this summary, so it must be strictly accurate — describe only events that actually occur in the script, including the real ending. Do not fabricate or guess.
+- "logline": a short, enticing streaming-style logline (Netflix / Apple TV style). 1 to 2 sentences, ~25 to 45 words, present tense. Open on the protagonist and the inciting situation, then turn to the central tension or hook. NO SPOILERS — never reveal the ending, the resolution, a twist, or who the villain turns out to be; stop at the point of tension. Evocative and specific, accurate to the script, no genre labels or title. Example voice: "After an assault the system refuses to punish, a horror-obsessed young woman fights to reclaim her life — unaware that the instructor teaching her self-defense hides a darkness of his own."
 - "read_check": proof that you read to the end. Provide "final_scene_heading" (the slug line of the final scene), "ending_quote" (15 to 30 words copied WORD FOR WORD, exactly as written, from the last two pages of the screenplay — do not paraphrase or summarize), and "last_line" (the final line of the screenplay).
 
 Return your response in this exact JSON format:
@@ -86,6 +87,7 @@ Return your response in this exact JSON format:
 "final_championability_rating": "HIGH/MEDIUM/LOW", "championability_justification": "Briefly summarize why a creative executive would—or would not—feel compelled to advocate for this screenplay based on its distinctiveness, voice, memorability, and genre execution."
 } }, "budget" : "$XX,XXX,XXX,XXX",
 "summary": "4-6 sentence plot summary covering setup, central conflict, and how the story actually ends/resolves. Strictly accurate to the screenplay; no invented events or endings.",
+"logline": "short spoiler-free streaming-style logline, 1-2 sentences, present tense, ending at the hook",
 "read_check": { "final_scene_heading": "slug line of the final scene", "ending_quote": "15-30 words copied verbatim from the last two pages of the script", "last_line": "the final line of the screenplay" }
 }
 
@@ -509,6 +511,82 @@ export async function evaluateScreenplay(scriptText) {
     return fallbackResult;
   }
   throw new AppError(`Evaluation failed on all models — ${failures.join('; ')}`, 502);
+}
+
+const LOGLINE_PROMPT = `You write short, enticing streaming-style loglines (Netflix / Apple TV style) for a curated screenplay portal. Read the ENTIRE screenplay provided — first page to last — then return ONLY a JSON object.
+
+Write ONE logline:
+- 1 to 2 sentences, roughly 25 to 45 words, present tense.
+- Open on the protagonist (a vivid descriptor of who they are) and their world or the inciting situation, then turn to the central tension or hook.
+- NO SPOILERS: never reveal the ending, the resolution, a twist, who dies, or who the villain turns out to be. Stop at the point of tension. You are selling the read, not replacing it.
+- Evocative and specific; an em-dash or a colon for rhythm is good. Be strictly accurate to the script — invent nothing. No genre labels, no title, no "In this film...".
+
+Style anchors — match this exact voice and length:
+- "In a near-future police state, a disgraced investigator framed for murder is pulled from his cell to hunt a charismatic terrorist — only for the manhunt to drag him back toward the conspiracy that put him away."
+- "After an assault the system refuses to punish, a horror-obsessed young woman fights to reclaim her life — unaware that the instructor teaching her self-defense hides a darkness of his own."
+- "Fleeing her ex-husband, a British woman talks her way onto a guarded stranger's private jet — until a storm strands them together on a deserted island, where contempt slowly turns into something neither can walk away from."
+
+Also return a read_check proving you actually read to the end.
+
+Return ONLY this JSON, nothing else (no prose, no markdown fences):
+{
+"logline": "the logline",
+"read_check": { "ending_quote": "15 to 30 words copied verbatim from the last two pages of the screenplay", "last_line": "the final line of the screenplay" }
+}`;
+
+/**
+ * Generate a single streaming-style logline from a full read of the script,
+ * verified against the ending. Used to backfill loglines onto already-scored
+ * submissions WITHOUT re-scoring them. Returns { logline, readVerified, modelUsed }.
+ */
+export async function generateLogline(scriptText) {
+  const MAX_CHARS = 600_000;
+  const scriptForModel = scriptText.length > MAX_CHARS
+    ? scriptText.slice(0, MAX_CHARS) + '\n\n[...exceeded maximum length...]'
+    : scriptText;
+
+  const failures = [];
+  let fallback = null; // best parsed-but-unverified result
+
+  for (const model of candidateModels()) {
+    let response;
+    try {
+      const stream = anthropic.messages.stream(
+        {
+          model,
+          max_tokens: 1024,
+          system: [{ type: 'text', text: LOGLINE_PROMPT, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: `Here is the full screenplay:\n\n${scriptForModel}` }],
+        },
+        { timeout: 180_000, maxRetries: 2 },
+      );
+      response = await stream.finalMessage();
+    } catch (err) {
+      const fatal = classifyFatal(err);
+      if (fatal) throw fatal;
+      failures.push(`${model} → ${err.status ?? err.name ?? 'error'}: ${err.message}`);
+      continue;
+    }
+
+    const rawText = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const json = extractJson(rawText);
+    if (!json || !json.logline) {
+      failures.push(`${model} → no logline`);
+      continue;
+    }
+
+    const readVerified = verifyReadToEnd(json, scriptForModel);
+    const result = { logline: String(json.logline).trim(), readVerified, modelUsed: model };
+    if (readVerified) return result;
+    failures.push(`${model} → read-check failed`);
+    fallback = result; // keep, flagged, in case nothing verifies
+  }
+
+  if (fallback) {
+    console.warn('Returning a logline flagged read_verified=false — could not confirm a full read');
+    return fallback;
+  }
+  throw new AppError(`Logline generation failed — ${failures.join('; ')}`, 502);
 }
 
 /**

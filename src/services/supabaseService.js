@@ -88,6 +88,55 @@ export async function mergeScriptEvaluationJson({ id, patch }) {
 }
 
 /**
+ * Append a reader-analytics event. Best-effort — callers must not let an
+ * analytics failure affect the user.
+ */
+export async function insertReadEvent(e) {
+  const { error } = await supabase.from('read_events').insert({
+    event_type: e.eventType,
+    script_id: e.scriptId ?? null,
+    session_id: e.sessionId ?? null,
+    reader_id: e.readerId ?? null,
+    recommender: e.recommender ?? null,
+    source: e.source ?? null,
+    page: e.page ?? null,
+    total_pages: e.totalPages ?? null,
+    depth_pct: e.depthPct ?? null,
+    seconds: e.seconds ?? null,
+  });
+  if (error) throw new Error(`DB insertReadEvent: ${error.message}`);
+}
+
+// Pull events (optionally since a date) for dashboard aggregation, paged past
+// Supabase's 1000-row default cap.
+export async function listReadEvents({ sinceISO } = {}) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    let qy = supabase.from('read_events')
+      .select('event_type, script_id, session_id, reader_id, recommender, source, page, total_pages, depth_pct, seconds, ts')
+      .order('ts', { ascending: true }).range(from, from + 999);
+    if (sinceISO) qy = qy.gte('ts', sinceISO);
+    const { data, error } = await qy;
+    if (error) throw new Error(`DB listReadEvents: ${error.message}`);
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+// id → title map for joining analytics (light; skips the big evaluation_json).
+export async function getScriptTitles() {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('scripts').select('id, title').range(from, from + 999);
+    if (error) throw new Error(`DB getScriptTitles: ${error.message}`);
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+/**
  * Persist the Supabase Storage path back to the script row after upload.
  */
 export async function updateScriptStoragePath({ id, storagePath }) {

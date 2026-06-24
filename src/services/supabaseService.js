@@ -179,6 +179,13 @@ export async function getFeedbackCounts() {
   return data || [];
 }
 
+// (reader_id, script_id) feedback pairs — for the reader reputation engine.
+export async function getFeedbackPairs() {
+  const { data, error } = await supabase.from('reader_feedback').select('reader_id, script_id, champion_verdict');
+  if (error) throw new Error(`DB getFeedbackPairs: ${error.message}`);
+  return data || [];
+}
+
 // id → {title, page_count} for joining analytics (light; skips the big evaluation_json).
 export async function getScriptTitles() {
   const out = [];

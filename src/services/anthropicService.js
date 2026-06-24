@@ -652,11 +652,11 @@ SUBJECT: <translated subject line>
   throw new AppError(`Email translation failed — ${lastErr?.message || 'unknown'}`, 502);
 }
 
-const RECALIBRATE_PROMPT = `You are re-calibrating a screenplay's evaluation using feedback from REAL human readers who actually read it. Those readers are the GROUND TRUTH — especially for Championability (Distinctiveness, Writer's Voice, Memorability, Genre Competence), which measures whether a real creative executive would advocate for the script. The AI's original read is only a starting point; wherever the readers diverge from it, trust the readers and explain the gap.
+const RECALIBRATE_PROMPT = `You are re-calibrating a screenplay's evaluation using feedback from REAL human readers who actually read it. Those readers are the GROUND TRUTH — most of all for Championability (Distinctiveness, Writer's Voice, Memorability, Genre Competence), which measures whether a real creative executive would advocate for the script, but also for Craft (Story Architecture, Character, Scene Craft, Execution, Dialogue, Theme, Emotional Impact). The AI's original read is only a starting point; wherever the readers diverge from it, trust the readers and explain the gap.
 
-You receive the AI evaluation and the readers' structured feedback (a champion verdict, optional 1-to-5 dimension ratings, and written or spoken notes).
+The readers' feedback mirrors the AI's own dimensions: a champion verdict, optional 1-to-5 ratings on the Craft and Championability dimensions, and written or spoken notes.
 
-Produce a re-calibrated assessment, weighting the human readers heavily on Championability. Output ONLY this JSON, nothing else:
+Produce a re-calibrated assessment, weighting the human readers heavily — most on Championability. Output ONLY this JSON, nothing else:
 {
   "championability": {
     "ai_rating": "the AI's original HIGH/MEDIUM/LOW",
@@ -668,7 +668,11 @@ Produce a re-calibrated assessment, weighting the human readers heavily on Champ
     "genre_competence": "1-2 sentences",
     "justification": "why the calibrated rating, grounded in the reader feedback"
   },
-  "craft_note": "brief note if the feedback bears on craft, else empty string",
+  "craft": {
+    "ai_score": "the AI's original craft score (number) if present, else null",
+    "reader_signal": "HIGHER / LOWER / ALIGNED — how the readers' craft ratings compare to the AI",
+    "notes": "1-3 sentences on where readers' craft read differs from the AI's, by dimension"
+  },
   "divergence": "where readers and the AI most agreed and most diverged",
   "summary": "2-3 plain-language sentences for the team"
 }`;

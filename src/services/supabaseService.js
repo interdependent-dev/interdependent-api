@@ -241,10 +241,14 @@ export async function updateScriptStoragePath({ id, storagePath }) {
  * Mark a script as errored with a reason string.
  */
 export async function markScriptError({ id, reason }) {
-  await supabase
+  const { error } = await supabase
     .from('scripts')
     .update({ status: 'error', evaluation_result: reason })
     .eq('id', id);
+  // Don't throw (callers run in a background path), but DO surface it — a silent
+  // failure here strands the row in 'processing' and the submitter sees a spinner
+  // forever.
+  if (error) console.error(`markScriptError(${id}) failed: ${error.message}`);
 }
 
 /**

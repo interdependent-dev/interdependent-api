@@ -129,5 +129,6 @@ export async function submitAndEvaluate(req, res, next) {
     charCount: pdfData.charCount,
   });
 
-  runEvaluation({ script, pdfText: pdfData.text, name, email, title });
+  runEvaluation({ script, pdfText: pdfData.text, name, email, title })
+    .catch((e) => console.error('background runEvaluation failed:', e?.message || e));
 }

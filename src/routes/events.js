@@ -15,6 +15,9 @@ const TYPES = new Set([
 ]);
 const UUID = /^[0-9a-fA-F-]{36}$/;
 const num = (x, lo, hi) => (Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : null);
+// Free-text from the PUBLIC ingest — strip control chars so it's clean at rest,
+// independent of whether every future render sink remembers to HTML-escape it.
+const clean = (s, n) => (typeof s === 'string' ? s.replace(/[\x00-\x1f\x7f]/g, '').slice(0, n) : null);
 
 router.post('/', limiter, async (req, res) => {
   try {
@@ -24,10 +27,10 @@ router.post('/', limiter, async (req, res) => {
     await insertReadEvent({
       eventType: b.event_type,
       scriptId: b.script_id || null,
-      sessionId: typeof b.session_id === 'string' ? b.session_id.slice(0, 64) : null,
+      sessionId: clean(b.session_id, 64),
       readerId: b.reader_id && UUID.test(b.reader_id) ? b.reader_id : null,
-      recommender: typeof b.recommender === 'string' ? b.recommender.slice(0, 120) : null,
-      source: typeof b.source === 'string' ? b.source.slice(0, 20) : null,
+      recommender: clean(b.recommender, 120),
+      source: clean(b.source, 20),
       page: b.page != null ? Math.floor(num(b.page, 0, 100000)) : null,
       totalPages: b.total_pages != null ? Math.floor(num(b.total_pages, 0, 100000)) : null,
       depthPct: b.depth_pct != null ? num(b.depth_pct, 0, 100) : null,

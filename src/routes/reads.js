@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { getReaderScriptRead, getScriptPageCount } from '../services/supabaseService.js';
+import { isFinishedRead } from '../lib/readGate.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -24,11 +25,7 @@ router.get('/status', async (req, res, next) => {
       getReaderScriptRead(reader, script),
       getScriptPageCount(script),
     ]);
-    const reached   = pages ? Math.max(1, Math.round(pages * (depth / 100))) : 0;
-    const timeFloor = Math.max(90, reached * 3);
-    const finished  = depth >= 85 && seconds >= timeFloor;
-
-    res.json({ finished, depth, seconds });
+    res.json({ finished: isFinishedRead(depth, seconds, pages), depth, seconds });
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

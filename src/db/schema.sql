@@ -84,3 +84,43 @@ CREATE TABLE IF NOT EXISTS reader_leaderboard (
 
 CREATE INDEX IF NOT EXISTS reader_credentials_reader_id_idx ON reader_credentials(reader_id);
 CREATE INDEX IF NOT EXISTS reader_leaderboard_reader_position_idx ON reader_leaderboard(reader_id, position);
+
+-- NOTE: read_events and reader_feedback were created directly in Supabase and were
+-- missing from this file, so a fresh environment built from schema.sql alone would
+-- 500 on every /events and feedback call. Added here to match the running DB; if the
+-- live column types differ, treat the live DB as authoritative.
+
+-- Append-only reader-analytics ingest (POST /events). Backs reading time/depth
+-- tracking and the cross-device completion gate (GET /reads/status).
+CREATE TABLE IF NOT EXISTS read_events (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type  TEXT NOT NULL,                                  -- whitelisted in routes/events.js
+  script_id   UUID REFERENCES scripts(id) ON DELETE CASCADE,
+  session_id  TEXT,                                           -- anonymous client session
+  reader_id   UUID REFERENCES readers(id) ON DELETE SET NULL, -- set when a reader is signed in
+  recommender TEXT,
+  source      TEXT,                                           -- 'portal' | 'recommend' | ...
+  page        INTEGER,
+  total_pages INTEGER,
+  depth_pct   NUMERIC,                                        -- 0..100, furthest reached
+  seconds     INTEGER,                                        -- active reading seconds
+  ts          TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS read_events_script_idx ON read_events(script_id);
+CREATE INDEX IF NOT EXISTS read_events_reader_script_idx ON read_events(reader_id, script_id);
+CREATE INDEX IF NOT EXISTS read_events_ts_idx ON read_events(ts);
+
+-- Structured reader feedback: a PASS/CONSIDER/RECOMMEND decision, 1-5 dimension
+-- ratings, free text, an optional voice-note transcript + stored audio path.
+CREATE TABLE IF NOT EXISTS reader_feedback (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  script_id        UUID NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
+  reader_id        UUID REFERENCES readers(id) ON DELETE SET NULL,
+  champion_verdict TEXT,                                      -- 'recommend' | 'consider' | 'pass'
+  dimensions       JSONB,                                     -- { story_architecture: 1..5, ... }
+  text             TEXT,
+  transcript       TEXT,
+  audio_path       TEXT,                                      -- storage key for the voice note
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS reader_feedback_script_idx ON reader_feedback(script_id);

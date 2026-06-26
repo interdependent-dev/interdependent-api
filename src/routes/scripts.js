@@ -97,7 +97,7 @@ router.post('/:id/retry', async (req, res, next) => {
       // A forced re-evaluation is an admin action — don't re-email the submitter.
       // A plain retry (first successful eval after a failure) still notifies.
       notify: req.query.force !== '1',
-    });
+    }).catch((e) => console.error('background runEvaluation (retry) failed:', e?.message || e));
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

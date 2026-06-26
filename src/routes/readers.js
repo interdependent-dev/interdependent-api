@@ -7,7 +7,8 @@ import {
   getReader,
 } from '../controllers/readerController.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { getReaders, listReadEvents, getScriptTitles } from '../services/supabaseService.js';
+import { getReaders, listReadEvents, getScriptTitles, getAllFeedback } from '../services/supabaseService.js';
+import { readingPct, isFinishedRead } from '../lib/readGate.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -20,16 +21,19 @@ router.post('/register/complete', registerComplete);
 router.post('/auth/begin', authBegin);
 router.post('/auth/complete', authComplete);
 
-// The READERS list — every reader and what they've read (max depth %, newest first).
-// Visible to all portal users (same passcode gate as the rest of the portal).
+// The TOP READERS list — readers who've genuinely finished at least MIN_FINISHED
+// screenplays, with what they've read (honest read % = depth AND time) and the
+// feedback they've left. Visible to all portal users (same passcode gate).
 // NOTE: must be declared BEFORE '/:handle' or it would match handle === 'list'.
+const MIN_FINISHED = 1; // a reader earns a spot once they finish a real read. Tunable.
+
 router.get('/list', requireAuth, async (req, res, next) => {
   try {
-    const [readers, events, titles] = await Promise.all([
-      getReaders(), listReadEvents(), getScriptTitles(),
+    const [readers, events, titles, feedback] = await Promise.all([
+      getReaders(), listReadEvents(), getScriptTitles(), getAllFeedback(),
     ]);
-    const titleById = {};
-    titles.forEach((t) => { titleById[t.id] = t.title; });
+    const titleById = {}, pagesById = {};
+    titles.forEach((t) => { titleById[t.id] = t.title; pagesById[t.id] = t.page_count; });
 
     // reader_id -> script_id -> { furthest depth, longest active time, last seen }
     const byReader = {};
@@ -42,23 +46,40 @@ router.get('/list', requireAuth, async (req, res, next) => {
       if (e.ts > sc.last) sc.last = e.ts;
     }
 
+    // reader_id -> feedback they've left
+    const fbByReader = {};
+    for (const f of feedback) {
+      if (!f.reader_id) continue;
+      (fbByReader[f.reader_id] || (fbByReader[f.reader_id] = [])).push({
+        title: titleById[f.script_id] || 'Untitled',
+        decision: f.champion_verdict || null,
+        text: f.text || '',
+        transcript: f.transcript && f.transcript !== f.text ? f.transcript : '',
+        when: f.created_at,
+      });
+    }
+
     const list = readers.map((r) => {
       const rd = byReader[r.id] || {};
       const reads = Object.entries(rd).map(([sid, v]) => ({
         title: titleById[sid] || 'Untitled',
-        pct: Math.round(v.depth || 0),
-        seconds: Math.round(v.seconds || 0),
+        pct: readingPct(v.depth, v.seconds, pagesById[sid]),   // honest: depth AND time
+        finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
         last: v.last,
       })).sort((a, b) => (a.last < b.last ? 1 : -1));
+      const fb = (fbByReader[r.id] || []).sort((a, b) => (a.when < b.when ? 1 : -1));
       return {
         handle: r.handle,
         name: r.display_name || r.handle,
         joinedAt: r.created_at || null,
         reads,
         scriptsRead: reads.length,
-        finished: reads.filter((x) => x.pct >= 85).length,
+        finished: reads.filter((x) => x.finished).length,
+        feedback: fb,
       };
-    }).sort((a, b) => b.finished - a.finished || b.scriptsRead - a.scriptsRead);
+    })
+      .filter((r) => r.finished >= MIN_FINISHED)   // only readers who've earned a spot
+      .sort((a, b) => b.finished - a.finished || b.scriptsRead - a.scriptsRead);
 
     res.json({ readers: list });
   } catch (err) {

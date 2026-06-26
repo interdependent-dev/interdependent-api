@@ -213,6 +213,14 @@ export async function getFeedbackPairs() {
   return data || [];
 }
 
+// All reader feedback with notes — for the READERS page (see what each reader said).
+export async function getAllFeedback() {
+  const { data, error } = await supabase.from('reader_feedback')
+    .select('reader_id, script_id, champion_verdict, text, transcript, created_at');
+  if (error) throw new Error(`DB getAllFeedback: ${error.message}`);
+  return data || [];
+}
+
 // id → {title, page_count} for joining analytics (light; skips the big evaluation_json).
 export async function getScriptTitles() {
   const out = [];

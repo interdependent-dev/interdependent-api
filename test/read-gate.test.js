@@ -1,32 +1,34 @@
-// Locks the canonical "finished read" behavior for the API copy of the gate.
-// The portal keeps an identical copy (site/lib/read-gate.js) with the SAME vectors
-// in its own test — if you change one, change both, and both suites must stay green.
-// Run: `npm test` (from interdependent-api/).
+// Locks the reading-progress logic for the API copy of the gate. The portal ships
+// an identical suite over its own copy — change one, change both; both must stay
+// green. Run: `npm test` (from interdependent-api/).
 import test from 'node:test';
 import assert from 'node:assert';
-import { isFinishedRead } from '../src/lib/readGate.js';
+import { readingPct, isFinishedRead } from '../src/lib/readGate.js';
 
-// [depth%, activeSeconds, pages, expectedFinished] — identical to site/test/read-gate.test.js
+// [name, depth%, activeSeconds, pages, expectedReadingPct, expectedFinished]
+// Identical vectors to site/test/read-gate.test.js.
 const CASES = [
-  ['genuine full read of a feature',      96, 4000, 110, true],
-  ['real read with heavy pauses',         92,  700, 110, true],
-  ['fast-scroll skim to the bottom',     100,   20, 110, false],
-  ['short script, fully read',            95,  300,  30, true],
-  ['short script, skimmed',               95,   30,  30, false],
-  ['unknown page count, real read',       90,  120, null, true],
-  ['unknown page count, skim',           100,   20, null, false],
-  ['stopped well short (depth too low)',  84, 9999, 110, false],
-  ['exactly at the floor',                85,   90, null, true],
-  ['one second under the floor',          85,   89, null, false],
+  ['genuine full read',           96, 4000, 110, 96, true],
+  ['sub-minute skim (the bug)',  100,   50, 110,  2, false],
+  ['fast-scroll skim',           100,   20, 110,  1, false],
+  ['partial real read',           92, 1900, 110, 86, true],
+  ['read half, carefully',        50, 2000, 110, 50, false],
+  ['short script, real read',     95,  700,  30, 95, true],
+  ['short script, skim',          95,   60,  30, 10, false],
+  ['unknown pages, real read',    90, 2200, null, 90, true],
+  ['unknown pages, skim',        100,   30, null,  2, false],
+  ['exactly at the finish bar',   85, 1700, 100, 85, true],
+  ['one notch under the bar',     85, 1680, 100, 84, false],
 ];
 
-for (const [name, depth, seconds, pages, expected] of CASES) {
+for (const [name, d, s, p, expectPct, expectFin] of CASES) {
   test(name, () => {
-    assert.strictEqual(isFinishedRead(depth, seconds, pages), expected);
+    assert.strictEqual(readingPct(d, s, p), expectPct, 'readingPct');
+    assert.strictEqual(isFinishedRead(d, s, p), expectFin, 'isFinishedRead');
   });
 }
 
-test('handles missing/garbage inputs without throwing', () => {
-  assert.strictEqual(isFinishedRead(undefined, undefined, undefined), false);
+test('garbage inputs are safe', () => {
+  assert.strictEqual(readingPct(undefined, undefined, undefined), 0);
   assert.strictEqual(isFinishedRead(null, null, null), false);
 });

@@ -10,6 +10,7 @@ import scriptsRouter from './routes/scripts.js';
 import shareRouter from './routes/share.js';
 import eventsRouter from './routes/events.js';
 import analyticsRouter from './routes/analytics.js';
+import readsRouter from './routes/reads.js';
 import readersRouter from './routes/readers.js';
 import leaderboardRouter from './routes/leaderboard.js';
 import feedbackRouter from './routes/feedback.js';
@@ -64,6 +65,7 @@ app.use('/scripts', scriptsRouter);
 app.use('/share', shareRouter); // public, no auth — read-only recommendation view
 app.use('/events', eventsRouter); // public, no auth — reader-analytics ingest
 app.use('/analytics', analyticsRouter); // gated — dashboard data
+app.use('/reads', readsRouter); // gated — cross-device "has this reader finished this script?"
 app.use('/readers', readersRouter);
 app.use('/leaderboard', leaderboardRouter);
 

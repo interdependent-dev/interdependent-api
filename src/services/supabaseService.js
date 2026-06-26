@@ -125,6 +125,33 @@ export async function listReadEvents({ sinceISO, scriptId } = {}) {
   return out;
 }
 
+// Max depth + longest active-read time a specific reader logged on a specific
+// script (read_progress only). Powers cross-device completion: a finished read
+// recorded on one device unlocks the gate on another, because read_events carry
+// the reader_id of whoever was signed in during the read.
+export async function getReaderScriptRead(readerId, scriptId) {
+  const { data, error } = await supabase.from('read_events')
+    .select('depth_pct, seconds')
+    .eq('reader_id', readerId)
+    .eq('script_id', scriptId)
+    .eq('event_type', 'read_progress');
+  if (error) throw new Error(`DB getReaderScriptRead: ${error.message}`);
+  let depth = 0, seconds = 0;
+  for (const r of (data || [])) {
+    if (r.depth_pct != null) depth = Math.max(depth, r.depth_pct);
+    if (r.seconds != null) seconds = Math.max(seconds, r.seconds);
+  }
+  return { depth, seconds };
+}
+
+// A single script's page_count, for pace-aware completion (light — skips the row).
+export async function getScriptPageCount(scriptId) {
+  const { data, error } = await supabase.from('scripts')
+    .select('page_count').eq('id', scriptId).maybeSingle();
+  if (error) return null;
+  return data?.page_count ?? null;
+}
+
 // All readers (passkey identities) — for resolving names in analytics.
 export async function getReaders() {
   const { data, error } = await supabase.from('readers').select('id, handle, display_name');

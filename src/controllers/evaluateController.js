@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { extractText } from '../services/pdfService.js';
-import { evaluateScreenplay } from '../services/anthropicService.js';
-import { sendEvaluationEmail, sendFailureAlert } from '../services/emailService.js';
+import { evaluateScreenplay, detectTranslation, verifyRecommendation } from '../services/anthropicService.js';
+import { screenplayFormatGate } from '../services/formatGate.js';
+import { sendEvaluationEmail, sendFailureAlert, sendRevisionRequest } from '../services/emailService.js';
 import {
   upsertUser,
   saveScript,
@@ -10,6 +11,7 @@ import {
   updateScriptStoragePath,
   updateScriptEvaluation,
   markScriptError,
+  markScriptRejected,
 } from '../services/supabaseService.js';
 
 const submitSchema = z.object({
@@ -24,12 +26,54 @@ const submitSchema = z.object({
  * alerts the admin — a submission can never silently vanish.
  * Exported so the retry route can re-run stored submissions.
  */
-export async function runEvaluation({ script, pdfText, name, email, title, notify = true }) {
+export async function runEvaluation({ script, pdfText, name, email, title, pageCount = 0, notify = true }) {
   try {
+    // ── Pre-evaluation gates ──────────────────────────────────────────────────
+    // A malformed or clearly-translated submission is REJECTED before it is ever
+    // scored — so a broken file can never be evaluated, recommended, or shown with
+    // a score. The writer is asked to fix it and resubmit.
+
+    // 1) Formatting (pure code, no API cost): not in standard screenplay format.
+    const fmt = screenplayFormatGate(pdfText, { pageCount });
+    if (!fmt.ok) {
+      return rejectSubmission({
+        script, name, email, title, notify, kind: 'format',
+        reason: fmt.reasons.map((r) => r.detail).join(' '),
+        detail: { kind: 'format', reasons: fmt.reasons, metrics: fmt.metrics },
+      });
+    }
+
+    // 2) Translation (cheap screen): a clumsy English translation. Strict threshold
+    //    (significant + high confidence) so intentional dialect is never rejected.
+    const tr = await detectTranslation(pdfText);
+    if (tr.translated && tr.severity === 'significant' && (tr.confidence ?? 0) >= 0.85) {
+      const lang = tr.original_language ? ` from ${tr.original_language}` : '';
+      return rejectSubmission({
+        script, name, email, title, notify, kind: 'translation',
+        reason: `The screenplay reads as a clumsy English translation${lang}${(tr.evidence || []).length ? ` (e.g. ${tr.evidence.slice(0, 3).join('; ')})` : ''}.`,
+        detail: { kind: 'translation', ...tr },
+      });
+    }
+
+    // ── Full evaluation ───────────────────────────────────────────────────────
     const { rawText, evaluationJson, modelUsed } = await evaluateScreenplay(pdfText);
 
+    // ── Opus verifier: a RECOMMEND must survive an adversarial second pass ──────
+    if (evaluationJson && evaluationJson.decision === 'RECOMMEND') {
+      try {
+        const v = await verifyRecommendation(pdfText, evaluationJson);
+        evaluationJson.verifier = { decision_in: 'RECOMMEND', ...v };
+        if (v.veto) {
+          evaluationJson.decision = v.recommended_decision || 'CONSIDER';
+          console.log(`Script ${script.id} ("${title}") RECOMMEND vetoed by verifier (${v.modelUsed}) → ${evaluationJson.decision}: ${(v.reasons || []).join('; ')}`);
+        }
+      } catch (err) {
+        console.error(`Verifier failed for ${script.id} — leaving RECOMMEND: ${err.message}`); // fail open
+      }
+    }
+
     await updateScriptEvaluation({ id: script.id, evaluationResult: rawText, evaluationJson });
-    console.log(`Script ${script.id} ("${title}") evaluated by ${modelUsed}`);
+    console.log(`Script ${script.id} ("${title}") evaluated by ${modelUsed} → ${evaluationJson?.decision}`);
 
     // notify=false on admin re-evaluations (rubric conversions, etc.) — the
     // submitter already received their result and shouldn't be re-emailed.
@@ -54,6 +98,23 @@ export async function runEvaluation({ script, pdfText, name, email, title, notif
         reason,
       }).catch(() => {});
     }
+  }
+}
+
+/**
+ * Reject a submission pre-evaluation: no score is produced, the row is marked
+ * 'rejected' with the reason, and (when notify) the writer gets a revise-and-
+ * resubmit email. A rejection is a content decision, not a server error.
+ */
+async function rejectSubmission({ script, name, email, title, notify, kind, reason, detail }) {
+  const message = kind === 'translation'
+    ? `This screenplay reads as a translation into English, so it isn't ready for evaluation yet. Please resubmit it in its original language — our reviewer reads and evaluates every language natively — or in fully idiomatic, professionally edited English.`
+    : `This file isn't in standard screenplay format, so it can't be evaluated yet. ${reason} Re-export your screenplay from screenwriting software as a PDF and resubmit.`;
+  await markScriptRejected({ id: script.id, reason, detail: { ...detail, message } }).catch(() => {});
+  console.log(`Script ${script.id} ("${title}") REJECTED (${kind}): ${reason}`);
+  if (notify) {
+    sendRevisionRequest({ submitterName: name, submitterEmail: email, title, kind, message, reason })
+      .catch((err) => console.error('Revision-request email failed:', err.message));
   }
 }
 
@@ -129,6 +190,6 @@ export async function submitAndEvaluate(req, res, next) {
     charCount: pdfData.charCount,
   });
 
-  runEvaluation({ script, pdfText: pdfData.text, name, email, title })
+  runEvaluation({ script, pdfText: pdfData.text, name, email, title, pageCount: pdfData.pageCount })
     .catch((e) => console.error('background runEvaluation failed:', e?.message || e));
 }

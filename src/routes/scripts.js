@@ -91,6 +91,7 @@ router.post('/:id/retry', async (req, res, next) => {
     runEvaluation({
       script: { id: row.id },
       pdfText: pdfData.text,
+      pageCount: pdfData.pageCount,
       name: row.users?.name ?? 'Writer',
       email: row.users?.email ?? '',
       title: row.title,

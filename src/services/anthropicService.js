@@ -6,7 +6,13 @@ const { RateLimitError, AuthenticationError, APIConnectionTimeoutError } = Anthr
 
 const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
 
-const SYSTEM_PROMPT = `You are a professional story analyst at a major Hollywood studio. Your job is to evaluate screenplays based on a strict rubric and return a structured JSON evaluation. Your response must follow the evaluation framework precisely and adhere to the scoring guidelines provided. Return only JSON. No explanations, just JSON. 
+const SYSTEM_PROMPT = `You are a professional story analyst at a major Hollywood studio. Your job is to evaluate screenplays based on a strict rubric and return a structured JSON evaluation. Your response must follow the evaluation framework precisely and adhere to the scoring guidelines provided. Return only JSON. No explanations, just JSON.
+
+CRITICAL — SCORING CALIBRATION (read this before you score anything):
+- NEVER be charitable and never give the benefit of the doubt. Score ONLY what is actually on the page, strictly against the anchor descriptions below. Reward execution, never potential, effort, or ambition.
+- Use the FULL 1-10 range and make every score track real quality. Most submissions are amateur or still developmental. 7-8 means genuinely strong professional work; 9-10 is rare and exceptional (festival / awards caliber). A competent-but-unremarkable screenplay is a 4-6, NOT a 7. If a category is weak, score it 1-3 and say why. Do NOT cluster scores in the 6-8 band — most scripts should land with a weighted Craft Score below 60. A high score must be earned and defended; the default is skeptical.
+- FORMATTING IS NOT OPTIONAL. If the screenplay is not in standard screenplay format — scene headings, character cues, and dialogue are not properly distinguished and indented, or the text is reflowed so single words are stranded on their own lines, or it reads like raw pasted text rather than a screenwriting-tool export — Screenplay Execution MUST be 1-3 and you must state that it is not professionally formatted.
+- TRANSLATION IS A DEFECT, NOT A VOICE. If the English reads as a translation from another language — calque or literal foreign syntax, non-idiomatic phrasing, stilted/oddly-formal constructions, vocative or idiom calques, character names or terms in another language's orthography or diacritics, or translator's notes left in the text — treat that awkwardness as a genuine weakness in Dialogue Effectiveness AND Screenplay Execution. NEVER credit translationese as "distinctive," "authentic," "memorable," or as the writer's "voice." A clumsy translation cannot earn a high Dialogue score, HIGH Championability, or a RECOMMEND. (This does not apply to a screenplay genuinely written in another language and submitted in that language — evaluate that natively.)
 
 Evaluation Steps:
 
@@ -535,6 +541,109 @@ export async function evaluateScreenplay(scriptText) {
     return fallbackResult;
   }
   throw new AppError(`Evaluation failed on all models — ${failures.join('; ')}`, 502);
+}
+
+// ── Translation pre-screen ────────────────────────────────────────────────────
+// A clumsy English translation is a REJECT, not a low score (operator policy): the
+// writer is asked to resubmit in the original language, which the rubric evaluates
+// natively. This runs BEFORE the paid evaluation so a translation never receives a
+// craft score. Validated on real submissions — flags Turkish-into-English at ~0.98
+// confidence while correctly clearing intentional dialect / broken-English-as-character.
+const TRANSLATION_PROMPT = `You screen screenplay submissions for ONE thing: is the ENGLISH text a TRANSLATION into English from another language (the writer composed in another language and translated it, or wrote in non-native English) badly enough that it reads awkwardly?
+
+Look for: calque syntax (literal foreign word order), non-idiomatic phrasing and collocations, stilted or oddly formal constructions, vocative or idiom calques, inconsistent register, character names or terms in another language's orthography or diacritics, and translator's notes left in the text.
+
+Judge the ENGLISH AS WRITTEN, and do NOT be charitable — translationese that impairs readability is a defect. BUT do not confuse it with INTENTIONAL stylization: deliberately broken English as a character trait, a dialect, or a literary flourish is NOT translationese.
+
+If the screenplay is written PRIMARILY in a language other than English, this screen does not apply — return translated=false (it will be evaluated natively in its own language).
+
+Return ONLY JSON, nothing else:
+{"translated": true|false, "confidence": 0.0-1.0, "original_language": "English name or null", "severity": "none|minor|significant", "evidence": ["short quoted examples"]}`;
+
+/**
+ * Decide whether an English screenplay is a clumsy translation. Returns the parsed
+ * screen object. FAILS OPEN — if every model errors it returns translated=false so a
+ * screen outage can never wrongly block a real writer (the Opus verifier is a backstop).
+ */
+export async function detectTranslation(scriptText) {
+  const sample = scriptText.length > 60_000 ? scriptText.slice(0, 60_000) : scriptText;
+  for (const model of candidateModels()) {
+    try {
+      const resp = await anthropic.messages.create(
+        {
+          model,
+          max_tokens: 700,
+          system: [{ type: 'text', text: TRANSLATION_PROMPT, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: `SCREENPLAY EXCERPT:\n\n${sample}` }],
+        },
+        { timeout: 90_000, maxRetries: 1 },
+      );
+      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const json = extractJson(text);
+      if (json && typeof json.translated === 'boolean') return json;
+    } catch (err) {
+      if (err instanceof Anthropic.AuthenticationError) throw err;
+      console.error(`detectTranslation: model '${model}' failed — ${err.message}`);
+    }
+  }
+  return { translated: false, confidence: 0, original_language: null, severity: 'none', evidence: [], screen_error: true };
+}
+
+// ── Opus verifier on RECOMMENDs ───────────────────────────────────────────────
+// An adversarial second pass on anything the rubric wants to RECOMMEND. Uses the
+// strongest model, told to be uncharitable; it can VETO a RECOMMEND down to CONSIDER
+// when the script isn't truly recommendable (formatting, translationese, inflated
+// craft, on-the-nose dialogue) — catching false positives the primary Sonnet pass misses.
+const VERIFIER_PROMPT = `You are a senior story executive doing the FINAL gate check before a screenplay is RECOMMENDED inside the studio. A junior reader scored it a RECOMMEND. Be skeptical and uncharitable and decide whether it truly merits RECOMMEND or should be knocked down to CONSIDER.
+
+VETO the RECOMMEND (recommend CONSIDER) if ANY of these are true:
+- It is not in standard professional screenplay format.
+- The English reads as a clumsy translation from another language (calque syntax, non-idiomatic phrasing, names/diacritics from another language, translator's notes). Translationese is NOT a "voice."
+- The craft is overrated relative to what is actually on the page — generic structure, on-the-nose or expository dialogue, thin characters, unearned emotion.
+- You would be embarrassed to put your name behind championing it to a studio head.
+
+Let the RECOMMEND stand ONLY if the screenplay is genuinely, demonstrably strong on the page. Be strict — RECOMMEND should be rare.
+
+Return ONLY JSON, nothing else:
+{"veto": true|false, "recommended_decision": "RECOMMEND"|"CONSIDER", "severity": "none|minor|significant", "reasons": ["concise, specific reasons"]}`;
+
+/**
+ * Adversarially re-check a RECOMMEND with the strongest model. Returns { veto,
+ * recommended_decision, severity, reasons, modelUsed }. FAILS OPEN — a verifier
+ * outage must never silently downgrade a genuinely good script.
+ */
+export async function verifyRecommendation(scriptText, evaluationJson) {
+  const sample = scriptText.length > 120_000 ? scriptText.slice(0, 120_000) : scriptText;
+  const cs = evaluationJson?.evaluation?.craft_score || {};
+  const cr = evaluationJson?.evaluation?.championability_rating || {};
+  const evalSummary = JSON.stringify({
+    craft_score: cs.final_craft_score,
+    championability: cr.final_championability_rating,
+    craft_justification: cs.craft_justification,
+    dialogue: cs.dialogue_effectiveness,
+    screenplay_execution: cs.screenplay_execution,
+  }).slice(0, 4000);
+  const models = [...new Set(['claude-opus-4-8', env.anthropicModel.trim()])];
+  for (const model of models) {
+    try {
+      const resp = await anthropic.messages.create(
+        {
+          model,
+          max_tokens: 900,
+          system: [{ type: 'text', text: VERIFIER_PROMPT, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: `PRIMARY EVALUATION (the RECOMMEND to check):\n${evalSummary}\n\nSCREENPLAY:\n\n${sample}` }],
+        },
+        { timeout: 180_000, maxRetries: 1 },
+      );
+      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const json = extractJson(text);
+      if (json && typeof json.veto === 'boolean') return { ...json, modelUsed: model };
+    } catch (err) {
+      if (err instanceof Anthropic.AuthenticationError) throw err;
+      console.error(`verifyRecommendation: model '${model}' failed — ${err.message}`);
+    }
+  }
+  return { veto: false, recommended_decision: 'RECOMMEND', severity: 'none', reasons: [], verifier_error: true };
 }
 
 const LOGLINE_PROMPT = `You write short, enticing streaming-style loglines (Netflix / Apple TV style) for a curated screenplay portal. Read the ENTIRE screenplay provided — first page to last — then return ONLY a JSON object.

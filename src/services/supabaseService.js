@@ -260,6 +260,24 @@ export async function markScriptError({ id, reason }) {
 }
 
 /**
+ * Mark a submission REJECTED — a content decision (malformed file / clumsy
+ * translation), not a server error. No evaluation is produced; the writer is asked
+ * to revise and resubmit. `detail` (kind, reasons, writer-facing message) is stored
+ * under evaluation_json.rejected so the portal can show the reason. Terminal status.
+ */
+export async function markScriptRejected({ id, reason, detail }) {
+  const { error } = await supabase
+    .from('scripts')
+    .update({
+      status: 'rejected',
+      evaluation_result: reason ?? null,
+      evaluation_json: detail ? { rejected: detail } : null,
+    })
+    .eq('id', id);
+  if (error) console.error(`markScriptRejected(${id}) failed: ${error.message}`);
+}
+
+/**
  * Upload a PDF buffer to Supabase Storage.
  * Returns the storage path (key) for the file.
  */

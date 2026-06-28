@@ -277,3 +277,49 @@ export async function sendFailureAlert({ title, submitterName, submitterEmail, r
     console.error('Failed to send failure alert:', err.message);
   }
 }
+
+/**
+ * Ask a writer to revise and resubmit when their submission was REJECTED before
+ * evaluation (malformed formatting, or a clumsy English translation). No scores
+ * are sent — the point is a clear, encouraging fix-and-resubmit note. BCCs admin.
+ * Non-fatal: logs rather than throwing.
+ */
+export async function sendRevisionRequest({ submitterName, submitterEmail, title, kind, message, reason }) {
+  const heading = kind === 'translation'
+    ? 'Please resubmit in the original language'
+    : 'Your screenplay needs reformatting';
+  const subject = `[ACTION NEEDED] ${title} — please revise and resubmit`;
+  const hi = submitterName ? `Hi ${submitterName},` : 'Hi,';
+  const detailNote = kind === 'translation'
+    ? `Our reviewer reads and evaluates every language natively, so the strongest path is to submit your screenplay in the language you wrote it in. If you'd rather keep it in English, please have it professionally edited into fully idiomatic English first.`
+    : `Please open your screenplay in screenwriting software (Final Draft, WriterDuet, Fade In, Highland, etc.) and export a fresh PDF, then resubmit. That preserves the standard screenplay formatting our evaluation depends on.`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+    <div style="background:#0a0a0a;padding:28px 36px;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;letter-spacing:1px;text-transform:uppercase;">Interdependent Studio</p>
+      <h1 style="margin:6px 0 0;color:#f8fafc;font-size:21px;">${heading}</h1>
+    </div>
+    <div style="padding:28px 36px;">
+      <p style="margin:0 0 14px;color:#374151;font-size:15px;line-height:1.6;">${hi}</p>
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">Thanks for submitting <strong>${title}</strong>. Before our reviewer can evaluate it, one thing needs to be fixed — so we've held off rather than send you a score based on a version that isn't ready.</p>
+      <div style="margin:0 0 16px;background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #ea580c;border-radius:6px;padding:12px 16px;color:#9a3412;font-size:14px;line-height:1.6;">${message || reason || ''}</div>
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;">${detailNote}</p>
+      <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">Once you resubmit, it goes through evaluation normally. We're glad you're here and want to see your work at its best.</p>
+    </div>
+    <div style="background:#f8fafc;padding:16px 36px;border-top:1px solid #e5e7eb;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;">Interdependent Studio · www.interdependent.studio</p>
+    </div>
+  </div>
+</body></html>`;
+
+  const adminEmail = env.adminEmail && env.adminEmail !== submitterEmail ? env.adminEmail : null;
+  const to = adminEmail ? [submitterEmail, adminEmail] : [submitterEmail];
+  try {
+    await resend.emails.send({ from: env.emailFrom, to, subject, html });
+  } catch (err) {
+    console.error(`Failed to send revision request to ${submitterEmail}:`, err.message);
+  }
+}

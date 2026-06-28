@@ -323,3 +323,45 @@ export async function sendRevisionRequest({ submitterName, submitterEmail, title
     console.error(`Failed to send revision request to ${submitterEmail}:`, err.message);
   }
 }
+
+/**
+ * Send a reader an account-recovery link. Used when they've lost every passkey
+ * and need to register a new one. The link carries a one-time, short-lived
+ * token; clicking it opens the recover page which runs a passkey ceremony.
+ * Throws on send failure so the caller can log it (the caller still returns a
+ * generic response to avoid leaking whether the email was sent).
+ */
+export async function sendRecoveryEmail({ to, displayName, handle, recoverUrl, expiresMinutes = 30 }) {
+  const hi = displayName ? `Hi ${displayName},` : 'Hi,';
+  const subject = 'Recover your Interdependent reader account';
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:600px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+    <div style="background:#0a0a0a;padding:28px 36px;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;letter-spacing:1px;text-transform:uppercase;">Interdependent Studio</p>
+      <h1 style="margin:6px 0 0;color:#f8fafc;font-size:21px;">Recover your reader account</h1>
+    </div>
+    <div style="padding:28px 36px;">
+      <p style="margin:0 0 14px;color:#374151;font-size:15px;line-height:1.6;">${hi}</p>
+      <p style="margin:0 0 18px;color:#374151;font-size:15px;line-height:1.6;">We received a request to recover access to your reader account <strong>${handle}</strong>. Click the button below on the device you want to use, then follow the prompt to create a new passkey (Touch ID, Face ID, Windows Hello, or your screen lock).</p>
+      <div style="text-align:center;margin:0 0 20px;">
+        <a href="${recoverUrl}" style="display:inline-block;background:red;color:#fff;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:.05em;text-transform:uppercase;padding:14px 28px;border-radius:6px;">Set up a new passkey</a>
+      </div>
+      <p style="margin:0 0 16px;color:#6b7280;font-size:13px;line-height:1.6;">This link expires in ${expiresMinutes} minutes and can be used once. If the button doesn't work, paste this address into your browser:<br>
+        <span style="color:#374151;word-break:break-all;">${recoverUrl}</span></p>
+      <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">If you didn't request this, you can safely ignore this email — your account is unchanged and no one can use the link without your device.</p>
+    </div>
+    <div style="background:#f8fafc;padding:16px 36px;border-top:1px solid #e5e7eb;">
+      <p style="margin:0;color:#9ca3af;font-size:12px;">Interdependent Studio · www.interdependent.studio</p>
+    </div>
+  </div>
+</body></html>`;
+
+  try {
+    await resend.emails.send({ from: env.emailFrom, to, subject, html });
+  } catch (err) {
+    console.error(`Failed to send recovery email to ${to}:`, err.message);
+    throw err;
+  }
+}

@@ -1,12 +1,20 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import {
   registerBegin,
   registerComplete,
   authBegin,
   authComplete,
   getReader,
+  setRecoveryEmail,
+  addDeviceBegin,
+  addDeviceComplete,
+  recoverRequest,
+  recoverBegin,
+  recoverComplete,
 } from '../controllers/readerController.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { requireActionToken } from '../middleware/requireActionToken.js';
 import { getReaders, listReadEvents, getScriptTitles, getAllFeedback } from '../services/supabaseService.js';
 import { readingPct, isFinishedRead } from '../lib/readGate.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -20,6 +28,29 @@ router.post('/register/complete', registerComplete);
 // Authentication — returning reader, get action token
 router.post('/auth/begin', authBegin);
 router.post('/auth/complete', authComplete);
+
+// Recovery email — set/update on a signed-in account (also how the
+// pre-recovery accounts backfill one). Needs a fresh action token.
+router.post('/email', requireActionToken, setRecoveryEmail);
+
+// Add a device — register an additional passkey while signed in. Both halves
+// require a fresh action token (proves an existing passkey first).
+router.post('/credentials/add/begin', requireActionToken, addDeviceBegin);
+router.post('/credentials/add/complete', requireActionToken, addDeviceComplete);
+
+// Account recovery (lost every passkey) — email a one-time link, then register
+// a new passkey under it. The request endpoint is rate-limited and
+// anti-enumeration; begin/complete are gated by the one-time token itself.
+const recoverLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,                       // per IP — a real reader needs one or two
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many recovery requests — please wait a few minutes and try again' },
+});
+router.post('/recover/request', recoverLimiter, recoverRequest);
+router.post('/recover/begin', recoverBegin);
+router.post('/recover/complete', recoverComplete);
 
 // The TOP READERS list — readers who've genuinely finished at least MIN_FINISHED
 // screenplays, with what they've read (honest read % = depth AND time) and the

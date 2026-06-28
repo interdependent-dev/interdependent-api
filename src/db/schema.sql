@@ -39,14 +39,21 @@ CREATE INDEX IF NOT EXISTS scripts_status_idx ON scripts(status);
 -- Run the block below once to enable the reader leaderboard feature.
 -- ───────────────────────────────────────────────────────────────────────────
 
--- Readers are curators (not screenplay submitters). Their identity lives
--- entirely in their passkey — no password, no email required.
+-- Readers are curators (not screenplay submitters). Their identity lives in
+-- their passkey — no password. A recovery email is captured at registration so
+-- a reader who loses every device can prove ownership and add a new passkey
+-- (see reader_recovery_tokens + the /readers/recover/* flow). Email is nullable
+-- so the pre-recovery accounts keep working until one is backfilled.
 CREATE TABLE IF NOT EXISTS readers (
   id           UUID PRIMARY KEY,           -- set by server at register/begin
   handle       TEXT UNIQUE NOT NULL,       -- e.g. 'chris-amell'  (URL-safe)
   display_name TEXT NOT NULL,              -- e.g. 'Chris Amell'
+  email        TEXT,                       -- normalized lowercase; recovery channel
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
+-- Idempotent add for environments created before the email column existed.
+ALTER TABLE readers ADD COLUMN IF NOT EXISTS email TEXT;
+CREATE INDEX IF NOT EXISTS readers_email_idx ON readers(LOWER(email));
 
 -- One row per passkey device; a reader can register on multiple devices.
 CREATE TABLE IF NOT EXISTS reader_credentials (
@@ -71,6 +78,21 @@ CREATE TABLE IF NOT EXISTS passkey_challenges (
   metadata   JSONB,                       -- { tempReaderId, handle, displayName }
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '5 minutes')
 );
+
+-- Account-recovery tokens. When a reader loses every passkey, they request a
+-- recovery link emailed to the address on file. Only the SHA-256 of the token
+-- is stored — the raw token lives solely in the email link. One-time
+-- (used_at set on completion) and short-lived (~30 min).
+CREATE TABLE IF NOT EXISTS reader_recovery_tokens (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reader_id  UUID NOT NULL REFERENCES readers(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,               -- sha256(raw token), hex
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,                 -- set once consumed; one-time use
+  request_ip TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS reader_recovery_token_hash_idx ON reader_recovery_tokens(token_hash);
 
 -- Each reader maintains a personal, ordered list of submitted scripts.
 CREATE TABLE IF NOT EXISTS reader_leaderboard (

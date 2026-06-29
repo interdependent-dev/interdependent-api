@@ -114,6 +114,7 @@ router.get('/list', requireAuth, async (req, res, next) => {
         id: sid,                                                // script id → clickable to its detail
         title: titleById[sid] || 'Untitled',
         pct: readingPct(v.depth, v.seconds, pagesById[sid]),   // honest: depth AND time
+        pages: pagesById[sid] || null,                          // total pages → render "read / total"
         finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
         last: v.last,
       })).sort((a, b) => (a.last < b.last ? 1 : -1));

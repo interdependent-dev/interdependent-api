@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
 import {
   registerBegin,
   registerComplete,
@@ -12,10 +13,12 @@ import {
   recoverRequest,
   recoverBegin,
   recoverComplete,
+  uploadPhoto,
 } from '../controllers/readerController.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireActionToken } from '../middleware/requireActionToken.js';
 import { getReaders, listReadEvents, getScriptTitles, getAllFeedback } from '../services/supabaseService.js';
+import { publicPhotoUrl } from '../services/readerService.js';
 import { readingPct, isFinishedRead } from '../lib/readGate.js';
 import { AppError } from '../middleware/errorHandler.js';
 
@@ -51,6 +54,21 @@ const recoverLimiter = rateLimit({
 router.post('/recover/request', recoverLimiter, recoverRequest);
 router.post('/recover/begin', recoverBegin);
 router.post('/recover/complete', recoverComplete);
+
+// Profile photo — upload/replace this reader's avatar (multipart 'photo').
+// Action-token gated. multer holds the file in memory; surface its size/type
+// errors as a clean 400 rather than a 500.
+const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 3 * 1024 * 1024 } });
+function photoUpload(req, res, next) {
+  avatarUpload.single('photo')(req, res, (err) => {
+    if (err) {
+      const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Image too large — max 3 MB' : err.message;
+      return next(new AppError(msg, 400, 'bad_image'));
+    }
+    next();
+  });
+}
+router.post('/photo', requireActionToken, photoUpload, uploadPhoto);
 
 // The TOP READERS list — readers who've genuinely finished at least MIN_FINISHED
 // screenplays, with what they've read (honest read % = depth AND time) and the
@@ -93,6 +111,7 @@ router.get('/list', requireAuth, async (req, res, next) => {
     const list = readers.map((r) => {
       const rd = byReader[r.id] || {};
       const reads = Object.entries(rd).map(([sid, v]) => ({
+        id: sid,                                                // script id → clickable to its detail
         title: titleById[sid] || 'Untitled',
         pct: readingPct(v.depth, v.seconds, pagesById[sid]),   // honest: depth AND time
         finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
@@ -102,6 +121,7 @@ router.get('/list', requireAuth, async (req, res, next) => {
       return {
         handle: r.handle,
         name: r.display_name || r.handle,
+        photoUrl: publicPhotoUrl(r.photo_path),
         joinedAt: r.created_at || null,
         reads,
         scriptsRead: reads.length,

@@ -7,10 +7,19 @@ const supabase = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
 
 // ─── Readers ────────────────────────────────────────────────────────────────
 
+// Avatars live in a PUBLIC storage bucket so the readers page can <img> them
+// directly. Only the object key is stored on the reader (photo_path).
+export const AVATAR_BUCKET = 'reader-avatars';
+
+export function publicPhotoUrl(photoPath) {
+  if (!photoPath) return null;
+  return `${env.supabaseUrl}/storage/v1/object/public/${AVATAR_BUCKET}/${encodeURI(photoPath)}`;
+}
+
 export async function getReaderByHandle(handle) {
   const { data, error } = await supabase
     .from('readers')
-    .select('id, handle, display_name, email, created_at')
+    .select('id, handle, display_name, email, photo_path, created_at')
     .eq('handle', handle)
     .maybeSingle();
   if (error) throw new Error(`DB getReaderByHandle: ${error.message}`);
@@ -20,7 +29,7 @@ export async function getReaderByHandle(handle) {
 export async function getReaderById(id) {
   const { data, error } = await supabase
     .from('readers')
-    .select('id, handle, display_name, email, created_at')
+    .select('id, handle, display_name, email, photo_path, created_at')
     .eq('id', id)
     .maybeSingle();
   if (error) throw new Error(`DB getReaderById: ${error.message}`);
@@ -44,9 +53,34 @@ export async function updateReaderEmail({ id, email }) {
     .from('readers')
     .update({ email })
     .eq('id', id)
-    .select('id, handle, display_name, email, created_at')
+    .select('id, handle, display_name, email, photo_path, created_at')
     .single();
   if (error) throw new Error(`DB updateReaderEmail: ${error.message}`);
+  return data;
+}
+
+// ─── Profile photo (public avatar bucket) ───────────────────────────────────
+
+export async function uploadReaderAvatar({ path, buffer, contentType }) {
+  const { error } = await supabase.storage
+    .from(AVATAR_BUCKET)
+    .upload(path, buffer, { contentType, upsert: true });
+  if (error) throw new Error(`Storage uploadReaderAvatar: ${error.message}`);
+}
+
+export async function deleteReaderAvatar(path) {
+  if (!path) return;
+  await supabase.storage.from(AVATAR_BUCKET).remove([path]).catch(() => {});
+}
+
+export async function updateReaderPhoto({ id, photoPath }) {
+  const { data, error } = await supabase
+    .from('readers')
+    .update({ photo_path: photoPath })
+    .eq('id', id)
+    .select('id, handle, display_name, email, photo_path, created_at')
+    .single();
+  if (error) throw new Error(`DB updateReaderPhoto: ${error.message}`);
   return data;
 }
 

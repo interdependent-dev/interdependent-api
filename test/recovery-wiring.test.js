@@ -29,7 +29,7 @@ test('emailService exports sendRecoveryEmail', async () => {
 test('readerController exports the new handlers', async () => {
   const c = await import('../src/controllers/readerController.js');
   for (const fn of ['registerBegin', 'registerComplete', 'setRecoveryEmail',
-    'addDeviceBegin', 'addDeviceComplete', 'recoverRequest', 'recoverBegin', 'recoverComplete']) {
+    'addDeviceBegin', 'addDeviceComplete', 'recoverRequest', 'recoverBegin', 'recoverComplete', 'uploadPhoto']) {
     assert.equal(typeof c[fn], 'function', `readerController.${fn} should be a function`);
   }
 });
@@ -49,6 +49,7 @@ test('readers route module mounts without throwing', async () => {
     'POST /recover/request',
     'POST /recover/begin',
     'POST /recover/complete',
+    'POST /photo',
   ]) {
     assert.ok(paths.includes(expected), `route ${expected} should be mounted (saw: ${paths.join(', ')})`);
   }

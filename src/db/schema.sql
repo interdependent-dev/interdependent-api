@@ -49,11 +49,15 @@ CREATE TABLE IF NOT EXISTS readers (
   handle       TEXT UNIQUE NOT NULL,       -- e.g. 'chris-amell'  (URL-safe)
   display_name TEXT NOT NULL,              -- e.g. 'Chris Amell'
   email        TEXT,                       -- normalized lowercase; recovery channel
+  photo_path   TEXT,                       -- object key in the public reader-avatars bucket
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
--- Idempotent add for environments created before the email column existed.
+-- Idempotent adds for environments created before these columns existed.
 ALTER TABLE readers ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE readers ADD COLUMN IF NOT EXISTS photo_path TEXT;
 CREATE INDEX IF NOT EXISTS readers_email_idx ON readers(LOWER(email));
+-- Profile avatars live in a PUBLIC Storage bucket 'reader-avatars' (create it in
+-- the dashboard or via the storage API); readers.photo_path holds the object key.
 
 -- One row per passkey device; a reader can register on multiple devices.
 CREATE TABLE IF NOT EXISTS reader_credentials (

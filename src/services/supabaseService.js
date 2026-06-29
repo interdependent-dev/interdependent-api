@@ -154,7 +154,7 @@ export async function getScriptPageCount(scriptId) {
 
 // All readers (passkey identities) — for resolving names in analytics.
 export async function getReaders() {
-  const { data, error } = await supabase.from('readers').select('id, handle, display_name, created_at');
+  const { data, error } = await supabase.from('readers').select('id, handle, display_name, photo_path, created_at');
   if (error) throw new Error(`DB getReaders: ${error.message}`);
   return data || [];
 }

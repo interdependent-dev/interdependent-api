@@ -31,6 +31,10 @@ function shapeReader(stats, reader) {
     readerId: reader.id,
     handle: reader.handle,
     name: reader.display_name || reader.handle,
+    // ONE role; the XP number is the identity. The bar shows role + number and a
+    // gradient of commitment — no named sub-levels. `levels` are the perk
+    // MILESTONES along the bar (thresholds + rewards + gates), not separate roles.
+    role: 'Reader',
     totalXp: scored.totalXp,
     barMax: scored.barMax,
     level: scored.level,

@@ -1,0 +1,170 @@
+// Locks the reader XP economy: per-action points, feedback thoroughness scaling,
+// level thresholds, the action-gates (XP alone can't buy a level), and the
+// aggregation from raw rows (reader-attributed + finished reads only).
+// Run: `npm test` (from interdependent-api/).
+import test from 'node:test';
+import assert from 'node:assert';
+import {
+  ACTIONS,
+  FEEDBACK_MAX,
+  LEVELS,
+  feedbackXpForRow,
+  levelForXp,
+  gateMet,
+  unmetGate,
+  scoreReader,
+  badgesFor,
+} from '../src/lib/xpConfig.js';
+import { aggregateReaderStats } from '../src/lib/xpAggregate.js';
+
+// ── feedback thoroughness ────────────────────────────────────────────────────
+
+test('bare verdict earns only the base', () => {
+  assert.strictEqual(feedbackXpForRow({}), ACTIONS.feedbackBase);
+});
+
+test('complete feedback (dims + notes + voice) ≈ 55 and equals FEEDBACK_MAX', () => {
+  const dims = { a: 5, b: 4, c: 3, d: 5, e: 2, f: 4, g: 5, h: 3 }; // 8 dims → caps the dim bonus
+  const xp = feedbackXpForRow({ dimensions: dims, text: 'x'.repeat(200), hasVoice: true });
+  assert.strictEqual(xp, ACTIONS.feedbackBase + ACTIONS.feedbackDimensionsCap + ACTIONS.feedbackNotes + ACTIONS.feedbackVoice);
+  assert.strictEqual(xp, FEEDBACK_MAX);
+  assert.strictEqual(xp, 55);
+});
+
+test('dimension bonus is capped', () => {
+  const elevenDims = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`d${i}`, 5]));
+  const xp = feedbackXpForRow({ dimensions: elevenDims });
+  assert.strictEqual(xp, ACTIONS.feedbackBase + ACTIONS.feedbackDimensionsCap);
+});
+
+test('short notes do not earn the notes bonus', () => {
+  assert.strictEqual(feedbackXpForRow({ text: 'too short' }), ACTIONS.feedbackBase);
+});
+
+test('null dimension values are not counted', () => {
+  assert.strictEqual(feedbackXpForRow({ dimensions: { a: null, b: 5 } }), ACTIONS.feedbackBase + 2);
+});
+
+// ── level math ───────────────────────────────────────────────────────────────
+
+test('levelForXp picks the highest threshold reached', () => {
+  assert.strictEqual(levelForXp(0).key, 'reader');
+  assert.strictEqual(levelForXp(59).key, 'reader');
+  assert.strictEqual(levelForXp(60).key, 'scout');
+  assert.strictEqual(levelForXp(299).key, 'scout');
+  assert.strictEqual(levelForXp(300).key, 'curator');
+  assert.strictEqual(levelForXp(5000).key, 'partner');
+});
+
+test('thresholds are strictly increasing', () => {
+  for (let i = 1; i < LEVELS.length; i++) assert.ok(LEVELS[i].min > LEVELS[i - 1].min);
+});
+
+test('gateMet / unmetGate', () => {
+  assert.strictEqual(gateMet(null, {}), true);
+  assert.strictEqual(gateMet({ reads: 5 }, { reads: 5 }), true);
+  assert.strictEqual(gateMet({ reads: 5 }, { reads: 4 }), false);
+  assert.deepStrictEqual(unmetGate({ reads: 5, feedbacks: 3 }, { reads: 6, feedbacks: 1 }), [
+    { key: 'feedbacks', need: 3, have: 1 },
+  ]);
+});
+
+// ── scoreReader: the hook ────────────────────────────────────────────────────
+
+test('one quality read + one complete feedback unlocks Scout (the first reward)', () => {
+  const r = scoreReader({ verifiedReads: 1, feedbacks: 1, feedbackXp: 55 });
+  assert.strictEqual(r.totalXp, ACTIONS.read + 55); // 65
+  assert.strictEqual(r.level.key, 'scout');
+  const scout = r.levels.find((l) => l.key === 'scout');
+  assert.strictEqual(scout.unlocked, true);
+  assert.strictEqual(r.nextLevel.key, 'curator');
+  assert.strictEqual(r.nextLevel.xpToGo, 300 - 65);
+});
+
+test('XP alone cannot buy a level — the gate must be met', () => {
+  // 100 reads = 1000 XP (past Curator's 300) but zero feedback ⇒ even Scout's
+  // gate (1 read + 1 feedback) is unmet, so the reward stays locked.
+  const r = scoreReader({ verifiedReads: 100, feedbacks: 0, feedbackXp: 0 });
+  assert.strictEqual(r.totalXp, 1000);
+  const scout = r.levels.find((l) => l.key === 'scout');
+  assert.strictEqual(scout.reached, true);
+  assert.strictEqual(scout.gateMet, false);
+  assert.strictEqual(scout.unlocked, false);
+  assert.strictEqual(r.level.key, 'reader'); // current level = highest UNLOCKED
+  assert.ok(scout.unmet.some((u) => u.key === 'feedbacks'));
+});
+
+test('reading + recommending can only take you so far — Tastemaker needs a landed rec', () => {
+  // Lots of reads, feedback, champions → enough XP for Tastemaker (800) and its
+  // champions gate (3), but no recommendation has landed ⇒ stays Curator.
+  const r = scoreReader({ verifiedReads: 40, feedbacks: 10, feedbackXp: 300, champions: 5, recsLanded: 0 });
+  assert.ok(r.totalXp >= 800);
+  const tm = r.levels.find((l) => l.key === 'tastemaker');
+  assert.strictEqual(tm.reached, true);
+  assert.strictEqual(tm.gateMet, false);
+  assert.ok(tm.unmet.some((u) => u.key === 'recsLanded'));
+  assert.strictEqual(r.level.key, 'curator');
+});
+
+test('badges fire on their thresholds', () => {
+  assert.deepStrictEqual(badgesFor({ verifiedReads: 5 }).sort(), ['deep-reader']);
+  assert.ok(badgesFor({ recsLanded: 1 }).includes('tastemaker'));
+  assert.ok(badgesFor({ feedbacks: 3 }).includes('calibrator'));
+  assert.ok(badgesFor({ verifiedReads: 10 }).includes('prolific'));
+});
+
+// ── aggregateReaderStats: raw rows → stats ───────────────────────────────────
+
+const READER = { id: 'r1', handle: 'jane-doe', display_name: 'Jane Doe' };
+const SCRIPTS = [{ id: 's1', page_count: 100 }, { id: 's2', page_count: 100 }];
+
+test('only reader-attributed, finished reads count toward XP', () => {
+  const events = [
+    // finished read by our reader on s1 (depth 96, plenty of time for 100pp)
+    { event_type: 'read_progress', reader_id: 'r1', script_id: 's1', depth_pct: 96, seconds: 4000 },
+    // a skim by our reader on s2 (scrolled to bottom in 40s) → NOT finished
+    { event_type: 'read_progress', reader_id: 'r1', script_id: 's2', depth_pct: 100, seconds: 40 },
+    // a finished read but with NO reader_id (anonymous/forgeable) → ignored
+    { event_type: 'read_progress', reader_id: null, script_id: 's1', depth_pct: 99, seconds: 5000 },
+  ];
+  const stats = aggregateReaderStats({ readers: [READER], events, champions: [], feedback: [], scripts: SCRIPTS });
+  assert.strictEqual(stats.r1.verifiedReads, 1);
+});
+
+test('feedback thoroughness aggregates per reader', () => {
+  const feedback = [
+    { reader_id: 'r1', script_id: 's1', dimensions: { a: 5, b: 4 }, text: 'short', audio_path: null }, // 15 + 4 = 19
+    { reader_id: 'r1', script_id: 's2', dimensions: null, text: 'x'.repeat(200), audio_path: 'feedback/s2.webm' }, // 15 + 10 + 15 = 40
+  ];
+  const stats = aggregateReaderStats({ readers: [READER], events: [], champions: [], feedback, scripts: SCRIPTS });
+  assert.strictEqual(stats.r1.feedbacks, 2);
+  assert.strictEqual(stats.r1.feedbackXp, 19 + 40);
+});
+
+test('early spot = championed before another reader did', () => {
+  const champions = [
+    { reader_id: 'r1', script_id: 's1', added_at: '2026-01-01T00:00:00Z' }, // first
+    { reader_id: 'r2', script_id: 's1', added_at: '2026-02-01T00:00:00Z' }, // later → r1 was early
+  ];
+  const stats = aggregateReaderStats({ readers: [READER], events: [], champions, feedback: [], scripts: SCRIPTS });
+  assert.strictEqual(stats.r1.champions, 1);
+  assert.strictEqual(stats.r1.earlySpots, 1);
+});
+
+test('recommend funnel: opened / landed / converted attributed by name', () => {
+  const events = [
+    // Jane recommended s1; a guest opened it and finished it
+    { event_type: 'recommend_open', recommender: 'Jane Doe', script_id: 's1', session_id: 'guestA' },
+    { event_type: 'read_progress', recommender: 'Jane Doe', script_id: 's1', session_id: 'guestA', depth_pct: 95, seconds: 4000 },
+    // Jane recommended s2; opened but only skimmed → opened but not landed
+    { event_type: 'recommend_open', recommender: 'Jane Doe', script_id: 's2', session_id: 'guestB' },
+    { event_type: 'read_progress', recommender: 'Jane Doe', script_id: 's2', session_id: 'guestB', depth_pct: 100, seconds: 30 },
+  ];
+  // s1 later championed by someone → Jane's recommend converted
+  const champions = [{ reader_id: 'r2', script_id: 's1', added_at: '2026-03-01T00:00:00Z' }];
+  const stats = aggregateReaderStats({ readers: [READER], events, champions, feedback: [], scripts: SCRIPTS });
+  assert.strictEqual(stats.r1.recsSent, 2);
+  assert.strictEqual(stats.r1.recsOpened, 2);
+  assert.strictEqual(stats.r1.recsLanded, 1);
+  assert.strictEqual(stats.r1.recsConverted, 1);
+});

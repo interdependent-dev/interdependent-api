@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { listReadEvents, getScriptTitles, getReaders, getChampions, getFeedbackPairs } from '../services/supabaseService.js';
+import { listReadEvents, getScriptTitles, getReaders, getChampions } from '../services/supabaseService.js';
+import { getAllReaderXp } from '../services/xpService.js';
+import { publicConfig } from '../lib/xpConfig.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -187,99 +189,14 @@ router.get('/script/:id', async (req, res, next) => {
 });
 
 // ── Reader reputation & spotlight ────────────────────────────────────────────
-// Standing (lifetime, never spent) drives tier + leaderboard; the same points
-// double as the spendable "Plot Points" balance for rewards. Points reward
-// HIGH-SIGNAL, hard-to-fake contribution — a verified read (depth+time, not a
-// skim), a structured evaluation, and above all recommendations that LAND and
-// picks the crowd later validates. Thresholds/rewards are tunable defaults.
-const TIERS = [
-  { key: 'reader', name: 'Reader', min: 0 },
-  { key: 'scout', name: 'Scout', min: 100 },
-  { key: 'curator', name: 'Curator', min: 500 },
-  { key: 'tastemaker', name: 'Tastemaker', min: 1500 },
-  { key: 'partner', name: 'Partner', min: 5000 },
-];
-const BADGE_DEFS = {
-  'deep-reader': { name: 'Deep Reader', desc: '5+ verified full reads' },
-  'early-spotter': { name: 'Early Spotter', desc: 'Championed a script before the crowd did' },
-  'tastemaker': { name: 'Tastemaker', desc: 'A recommendation that genuinely landed' },
-  'calibrator': { name: 'Calibrator', desc: '3+ structured evaluations that calibrate the AI' },
-  'prolific': { name: 'Prolific', desc: 'High reading & feedback volume' },
-  'connector': { name: 'Connector', desc: 'Recommendations others opened' },
-};
-const REWARDS = [
-  { at: 0, tier: 'reader', label: 'Public curator profile + badges' },
-  { at: 100, tier: 'scout', label: 'Early access to new submissions' },
-  { at: 500, tier: 'curator', label: 'Plots event ticket', note: 'redeem points for entry' },
-  { at: 1500, tier: 'tastemaker', label: 'Set visit / table-read invite · featured curator' },
-  { at: 5000, tier: 'partner', label: 'Screen-credit consideration — “Story Scout”' },
-];
-const POINTS = { read: 10, feedback: 15, champion: 5, recOpened: 2, recLanded: 15, earlySpot: 25 };
-
-function readerSpotlight(events, readers, champions, feedbackPairs, scripts) {
-  const pages = {}; scripts.forEach((s) => { pages[s.id] = s.page_count; });
-  const readsByReader = {}; // reader_id -> { scriptId -> {depth, seconds} }
-  const recByName = {};     // recommender(lower) -> { 'sess::scr' -> {opened, depth, seconds, script} }
-  for (const e of events) {
-    if (e.event_type === 'read_progress' && e.reader_id && e.script_id) {
-      const m = readsByReader[e.reader_id] || (readsByReader[e.reader_id] = {});
-      const r = m[e.script_id] || (m[e.script_id] = { depth: 0, seconds: 0 });
-      if (e.depth_pct != null) r.depth = Math.max(r.depth, e.depth_pct);
-      if (e.seconds != null) r.seconds = Math.max(r.seconds, e.seconds);
-    }
-    if (e.recommender && e.script_id) {
-      const rn = e.recommender.toLowerCase();
-      const key = `${e.session_id}::${e.script_id}`;
-      const m = recByName[rn] || (recByName[rn] = {});
-      const s = m[key] || (m[key] = { opened: false, depth: 0, seconds: 0, script: e.script_id });
-      if (e.event_type === 'recommend_open' || OPEN.has(e.event_type)) s.opened = true;
-      if (e.event_type === 'read_progress') { if (e.depth_pct != null) s.depth = Math.max(s.depth, e.depth_pct); if (e.seconds != null) s.seconds = Math.max(s.seconds, e.seconds); }
-    }
-  }
-  const champByReader = {}, champByScript = {};
-  champions.forEach((c) => { (champByReader[c.reader_id] = champByReader[c.reader_id] || []).push(c); (champByScript[c.script_id] = champByScript[c.script_id] || []).push(c); });
-  const fbByReader = {}; feedbackPairs.forEach((f) => { if (f.reader_id) fbByReader[f.reader_id] = (fbByReader[f.reader_id] || 0) + 1; });
-
-  const list = readers.map((r) => {
-    const reads = Object.entries(readsByReader[r.id] || {}).map(([sid, v]) => quality(v.depth, v.seconds, pages[sid]));
-    const verifiedReads = reads.filter((q) => q.engaged || q.finished).length;
-    const myChamps = champByReader[r.id] || [];
-    const earlySpots = myChamps.filter((c) => (champByScript[c.script_id] || []).some((o) => o.reader_id !== r.id && o.added_at > c.added_at)).length;
-    const fbCount = fbByReader[r.id] || 0;
-    const recs = Object.values(recByName[(r.display_name || r.handle || '').toLowerCase()] || {});
-    const recsSent = recs.length;
-    const recsOpened = recs.filter((s) => s.opened).length;
-    const recsLanded = recs.filter((s) => { const q = quality(s.depth, s.seconds, pages[s.script]); return q.engaged || q.finished; }).length;
-    const hitRate = recsSent ? Math.round((100 * recsLanded) / recsSent) : 0;
-    const points = verifiedReads * POINTS.read + fbCount * POINTS.feedback + myChamps.length * POINTS.champion
-      + recsOpened * POINTS.recOpened + recsLanded * POINTS.recLanded + earlySpots * POINTS.earlySpot;
-    const tier = TIERS.filter((t) => points >= t.min).pop() || TIERS[0];
-    const badges = [];
-    if (verifiedReads >= 5) badges.push('deep-reader');
-    if (earlySpots >= 1) badges.push('early-spotter');
-    if (recsLanded >= 1) badges.push('tastemaker');
-    if (fbCount >= 3) badges.push('calibrator');
-    if (verifiedReads >= 10 || fbCount >= 5) badges.push('prolific');
-    if (recsOpened >= 3) badges.push('connector');
-    return {
-      reader_id: r.id, handle: r.handle, name: r.display_name || r.handle, points,
-      tier: tier.key, tierName: tier.name,
-      verifiedReads, champions: myChamps.length, earlySpots, feedback: fbCount,
-      recsSent, recsOpened, recsLanded, hitRate, badges,
-    };
-  }).filter((r) => r.points > 0 || r.verifiedReads > 0 || r.champions > 0)
-    .sort((a, b) => b.points - a.points || b.hitRate - a.hitRate);
-
-  return { readers: list, tiers: TIERS, badges: BADGE_DEFS, rewards: REWARDS, points: POINTS };
-}
-
-router.get('/readers', async (req, res, next) => {
+// The full XP engine now lives in services/xpService.js (single source of truth,
+// shared with the public bar at /readers/:handle/xp). This endpoint delegates to
+// it so the dashboard and the bar can never diverge. Returns every reader's
+// scored XP plus the static economy config.
+router.get('/readers', async (_req, res, next) => {
   try {
-    const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
-    const [events, readers, champions, feedbackPairs, scripts] = await Promise.all([
-      listReadEvents({ sinceISO }), getReaders(), getChampions(), getFeedbackPairs(), getScriptTitles(),
-    ]);
-    res.json(readerSpotlight(events, readers, champions, feedbackPairs, scripts));
+    const readers = await getAllReaderXp();
+    res.json({ readers, config: publicConfig() });
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 

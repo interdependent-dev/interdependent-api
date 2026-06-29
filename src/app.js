@@ -14,6 +14,7 @@ import readsRouter from './routes/reads.js';
 import readersRouter from './routes/readers.js';
 import leaderboardRouter from './routes/leaderboard.js';
 import feedbackRouter from './routes/feedback.js';
+import xpRouter from './routes/xp.js';
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/analytics', analyticsRouter); // gated — dashboard data
 app.use('/reads', readsRouter); // gated — cross-device "has this reader finished this script?"
 app.use('/readers', readersRouter);
 app.use('/leaderboard', leaderboardRouter);
+app.use('/xp', xpRouter); // reader XP economy: public /xp/config + gated /xp/leaderboard
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

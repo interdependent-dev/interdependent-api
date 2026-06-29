@@ -213,6 +213,16 @@ export async function getFeedbackPairs() {
   return data || [];
 }
 
+// Full feedback rows needed to score THOROUGHNESS for XP — dimensions rated,
+// notes length, and whether a voice note exists. Kept separate from the lighter
+// pairs/counts accessors so the XP engine sees everything it scores on.
+export async function getFeedbackForXp() {
+  const { data, error } = await supabase.from('reader_feedback')
+    .select('reader_id, script_id, champion_verdict, dimensions, text, transcript, audio_path, created_at');
+  if (error) throw new Error(`DB getFeedbackForXp: ${error.message}`);
+  return data || [];
+}
+
 // All reader feedback with notes — for the READERS page (see what each reader said).
 export async function getAllFeedback() {
   const { data, error } = await supabase.from('reader_feedback')

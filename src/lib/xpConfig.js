@@ -57,7 +57,8 @@ export const LEVELS = [
     min: 0,
     color: '#3a3a3a',
     gate: null,
-    reward: { icon: '🎫', label: 'Public curator profile + badges' },
+    // `icon` is a SEMANTIC name; each client renders its own (branded) icon set.
+    reward: { icon: 'profile', label: 'Public curator profile + badges' },
   },
   {
     key: 'scout',
@@ -66,7 +67,7 @@ export const LEVELS = [
     color: '#8a8f98',
     gate: { reads: 1, feedbacks: 1 },
     reward: {
-      icon: '🎟️',
+      icon: 'ticket',
       label: 'Free event admission + podcast appearance',
       note: 'Launch Plots event · early access to new submissions',
     },
@@ -77,7 +78,7 @@ export const LEVELS = [
     min: 300,
     color: '#FF0000',
     gate: { reads: 5, feedbacks: 3, champions: 1 },
-    reward: { icon: '💬', label: 'Production Chat access', note: 'featured curator' },
+    reward: { icon: 'chat', label: 'Production Chat access', note: 'featured curator' },
   },
   {
     key: 'tastemaker',
@@ -85,7 +86,7 @@ export const LEVELS = [
     min: 800,
     color: '#FFD600',
     gate: { recsLanded: 1, champions: 3 },
-    reward: { icon: '🗳️', label: 'Voting privileges', note: 'greenlight votes' },
+    reward: { icon: 'vote', label: 'Voting privileges', note: 'greenlight votes' },
   },
   {
     key: 'partner',
@@ -93,7 +94,7 @@ export const LEVELS = [
     min: 2000,
     color: '#E5E4E2',
     gate: { recsLanded: 3, earlySpots: 1 },
-    reward: { icon: '🎬', label: 'Screen-credit consideration — “Story Scout”', note: 'set visit / table-read' },
+    reward: { icon: 'credit', label: 'Screen-credit consideration — “Story Scout”', note: 'set visit / table-read' },
   },
 ];
 

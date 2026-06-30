@@ -20,6 +20,7 @@ import { requireActionToken } from '../middleware/requireActionToken.js';
 import { getReaders, listReadEvents, getScriptTitles, getAllFeedback } from '../services/supabaseService.js';
 import { publicPhotoUrl } from '../services/readerService.js';
 import { readingPct, isFinishedRead } from '../lib/readGate.js';
+import { getReaderXp } from '../services/xpService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -134,6 +135,21 @@ router.get('/list', requireAuth, async (req, res, next) => {
       .sort((a, b) => b.finished - a.finished || b.scriptsRead - a.scriptsRead);
 
     res.json({ readers: list });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+});
+
+// Public reader XP — drives the curator's XP bar on their profile and anywhere
+// their standing is shown. Read-only projection of their real activity; safe to
+// expose (no email, no private data). Declared before '/:handle' for clarity
+// (the two-segment path can't collide with the one-segment profile route).
+router.get('/:handle/xp', async (req, res, next) => {
+  try {
+    const xp = await getReaderXp(req.params.handle);
+    if (!xp) return next(new AppError('Reader not found', 404));
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json(xp);
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

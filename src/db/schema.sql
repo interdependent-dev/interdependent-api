@@ -150,3 +150,15 @@ CREATE TABLE IF NOT EXISTS reader_feedback (
   created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS reader_feedback_script_idx ON reader_feedback(script_id);
+
+-- Idempotency log for reader XP emails (first-of-kind thank-yous + perk unlocks).
+-- The UNIQUE constraint guarantees each note is sent at most once per reader.
+CREATE TABLE IF NOT EXISTS reader_notifications (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reader_id  UUID NOT NULL REFERENCES readers(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,
+  ref        TEXT NOT NULL DEFAULT '',
+  sent_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (reader_id, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS reader_notifications_reader_idx ON reader_notifications(reader_id);

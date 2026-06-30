@@ -168,11 +168,25 @@ export async function getChampions() {
 
 // ── reader feedback ──────────────────────────────────────────────────────────
 export async function insertFeedback(row) {
-  const { data, error } = await supabase.from('reader_feedback').insert({
+  const fields = {
     script_id: row.scriptId, reader_id: row.readerId ?? null,
     champion_verdict: row.championVerdict ?? null, dimensions: row.dimensions ?? null,
     text: row.text ?? null, transcript: row.transcript ?? null,
-  }).select('id').single();
+  };
+  // Idempotent per (reader, script): editing/re-submitting feedback UPDATES the
+  // existing row rather than inserting a duplicate, so XP/gates can't be farmed.
+  // (Guest feedback — no reader_id — always inserts.)
+  if (row.readerId) {
+    const existing = await supabase.from('reader_feedback')
+      .select('id').eq('reader_id', row.readerId).eq('script_id', row.scriptId)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (existing.data?.id) {
+      const { error } = await supabase.from('reader_feedback').update(fields).eq('id', existing.data.id);
+      if (error) throw new Error(`DB insertFeedback(update): ${error.message}`);
+      return existing.data.id;
+    }
+  }
+  const { data, error } = await supabase.from('reader_feedback').insert(fields).select('id').single();
   if (error) throw new Error(`DB insertFeedback: ${error.message}`);
   return data.id;
 }
@@ -211,6 +225,34 @@ export async function getFeedbackPairs() {
   const { data, error } = await supabase.from('reader_feedback').select('reader_id, script_id, champion_verdict');
   if (error) throw new Error(`DB getFeedbackPairs: ${error.message}`);
   return data || [];
+}
+
+// Full feedback rows needed to score THOROUGHNESS for XP — dimensions rated,
+// notes length, and whether a voice note exists. Kept separate from the lighter
+// pairs/counts accessors so the XP engine sees everything it scores on.
+export async function getFeedbackForXp() {
+  const { data, error } = await supabase.from('reader_feedback')
+    .select('reader_id, script_id, champion_verdict, dimensions, text, transcript, audio_path, created_at');
+  if (error) throw new Error(`DB getFeedbackForXp: ${error.message}`);
+  return data || [];
+}
+
+// Claim a one-time notification slot — idempotency for XP emails. Returns true
+// ONLY for the first caller of a (reader_id, kind, ref); the UNIQUE constraint
+// makes duplicates fail, which we treat as "already sent". Any other failure
+// (e.g. the table isn't migrated yet) returns false so we never spam or throw.
+export async function claimNotification(readerId, kind, ref = '') {
+  const { data, error } = await supabase
+    .from('reader_notifications')
+    .insert({ reader_id: readerId, kind, ref })
+    .select('id');
+  if (error) {
+    if (!/duplicate|unique|23505/i.test(error.message)) {
+      console.error('claimNotification error:', error.message);
+    }
+    return false;
+  }
+  return !!(data && data.length);
 }
 
 // All reader feedback with notes — for the READERS page (see what each reader said).

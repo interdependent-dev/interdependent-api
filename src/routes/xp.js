@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { publicConfig } from '../lib/xpConfig.js';
-import { getAllReaderXp } from '../services/xpService.js';
+import { getAllReaderXp, filmCreditContenders } from '../services/xpService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -18,6 +18,16 @@ router.get('/config', (_req, res) => {
 router.get('/leaderboard', requireAuth, async (_req, res, next) => {
   try {
     res.json({ readers: await getAllReaderXp() });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+});
+
+// Gated — the "Story Scout" screen-credit contenders for one film, ranked by
+// contribution, with the limited slots awarded to the top eligible curators.
+router.get('/credits/:scriptId', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await filmCreditContenders(req.params.scriptId));
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

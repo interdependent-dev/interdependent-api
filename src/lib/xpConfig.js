@@ -47,9 +47,15 @@ export const ACTIONS = {
 export const FEEDBACK_MAX =
   ACTIONS.feedbackBase + ACTIONS.feedbackDimensionsCap + ACTIONS.feedbackNotes + ACTIONS.feedbackVoice;
 
-// The level ladder. `min` = XP threshold; `gate` = the spread of real actions
-// also required to UNLOCK the level's reward; `color` = the bar zone color
-// (brand ramp: ash → red → gold → platinum). The reward maps to Chris's perks.
+// The perk ladder = the MILESTONES along the bar. `min` = XP threshold; `gate` =
+// the spread of real actions also required to UNLOCK the reward (XP alone can't
+// buy it); `reward.icon` = a SEMANTIC name each client renders in its own branded
+// icon set. Tuned so the actions we want to encourage each drive a perk:
+//   event   → read THE CARRIER + feedback on it (the current promotion)
+//   podcast → sustained reading + feedback (multiple reads & feedback)
+//   chat    → reading + feedback + conviction (champions)
+//   voting  → taste validated (a recommendation that LANDED) + champions
+//   credit  → repeatedly validated taste (landed recs) + early spots
 export const LEVELS = [
   {
     key: 'reader',
@@ -57,46 +63,67 @@ export const LEVELS = [
     min: 0,
     color: '#3a3a3a',
     gate: null,
-    // `icon` is a SEMANTIC name; each client renders its own (branded) icon set.
     reward: { icon: 'profile', label: 'Public curator profile + badges' },
   },
   {
-    key: 'scout',
+    // The first reward — exclusive to THE CARRIER + the Jul 31 Plots event.
+    key: 'event',
     name: 'Scout',
     min: 60,
     color: '#8a8f98',
-    gate: { reads: 1, feedbacks: 1 },
+    gate: { featuredRead: 1, featuredFeedback: 1 },
     reward: {
       icon: 'ticket',
-      label: 'Free event admission + podcast appearance',
-      note: 'Launch Plots event · early access to new submissions',
+      label: 'Free admission — The Carrier × Plots, Jul 31',
+      note: 'Read The Carrier and leave complete feedback',
     },
   },
   {
-    key: 'curator',
+    // Podcast is now its OWN unlock — sustained reads + feedback.
+    key: 'podcast',
     name: 'Curator',
-    min: 300,
-    color: '#FF0000',
-    gate: { reads: 5, feedbacks: 3, champions: 1 },
-    reward: { icon: 'chat', label: 'Production Chat access', note: 'featured curator' },
+    min: 280,
+    color: '#ff8a3d',
+    gate: { reads: 5, feedbacks: 3 },
+    reward: { icon: 'mic', label: 'Podcast appearance', note: 'Talk scripts on the show' },
   },
   {
-    key: 'tastemaker',
+    key: 'chat',
     name: 'Tastemaker',
-    min: 800,
-    color: '#FFD600',
-    gate: { recsLanded: 1, champions: 3 },
-    reward: { icon: 'vote', label: 'Voting privileges', note: 'greenlight votes' },
+    min: 700,
+    color: '#FF0000',
+    gate: { reads: 8, feedbacks: 5, champions: 2 },
+    reward: { icon: 'chat', label: 'Production Chat access', note: 'Featured curator' },
   },
   {
-    key: 'partner',
+    key: 'voting',
     name: 'Partner',
-    min: 2000,
+    min: 1400,
+    color: '#FFD600',
+    gate: { recsLanded: 1, champions: 4 },
+    reward: { icon: 'vote', label: 'Voting privileges', note: 'Greenlight votes' },
+  },
+  {
+    key: 'credit',
+    name: 'Story Scout',
+    min: 2600,
     color: '#E5E4E2',
     gate: { recsLanded: 3, earlySpots: 1 },
-    reward: { icon: 'credit', label: 'Screen-credit consideration — “Story Scout”', note: 'set visit / table-read' },
+    // COMPETITIVE: reaching this tier makes you ELIGIBLE; the actual screen credit
+    // is scarce and decided per film (see CREDIT_* below).
+    competitive: true,
+    reward: { icon: 'credit', label: 'Screen-credit eligibility — “Story Scout”', note: 'Top contributors per film — limited slots' },
   },
 ];
+
+// Screen credit ("Story Scout") is scarce and COMPETITIVE. Reaching the credit
+// tier makes a curator eligible, but each film carries only a few credit slots,
+// awarded to the curators who contributed MOST to THAT film — ranked by the very
+// actions we reward (spotting it early, a recommendation that landed, championing
+// it, reading + reviewing it). This keeps the credit meaningful and pushes readers
+// to back the RIGHT films early, not just grind XP.
+export const CREDIT_SLOTS_PER_FILM = 5; // tunable: how many curators are credited per film
+export const CREDIT_WEIGHTS = { earlySpot: 50, recLanded: 30, champion: 15, readFeedback: 10 };
 
 // The fixed total length of the XP bar, in XP. The Partner threshold is the end
 // of the track; readers past it stay pinned at 100% (with the Partner zone lit).
@@ -160,6 +187,8 @@ const STAT_LABELS = {
   champions: 'champions',
   recsLanded: 'recommendations that landed',
   earlySpots: 'early spots',
+  featuredRead: 'read of The Carrier',
+  featuredFeedback: 'feedback on The Carrier',
 };
 export const statLabel = (k) => STAT_LABELS[k] || k;
 
@@ -185,6 +214,8 @@ export function scoreReader(stats = {}) {
     recsConverted: num(stats.recsConverted),
     writerLikes: num(stats.writerLikes),
     investorFollows: num(stats.investorFollows),
+    featuredRead: num(stats.featuredRead),
+    featuredFeedback: num(stats.featuredFeedback),
   };
 
   const breakdown = [
@@ -200,13 +231,16 @@ export function scoreReader(stats = {}) {
   ];
   const totalXp = breakdown.reduce((a, b) => a + b.xp, 0);
 
-  // gate stats use the bar's vocabulary (reads/feedbacks/champions/recsLanded/earlySpots)
+  // gate stats use the bar's vocabulary. featuredRead/featuredFeedback = did this
+  // reader read + give feedback on the featured script (The Carrier)?
   const gateStats = {
     reads: s.verifiedReads,
     feedbacks: s.feedbacks,
     champions: s.champions,
     recsLanded: s.recsLanded,
     earlySpots: s.earlySpots,
+    featuredRead: s.featuredRead,
+    featuredFeedback: s.featuredFeedback,
   };
 
   const levels = LEVELS.map((l) => {
@@ -263,13 +297,15 @@ export function badgesFor(s = {}) {
   return out;
 }
 
-// The public config the bar fetches once (GET /xp/config).
+// The public config the bar + explainer fetch once (GET /xp/config).
 export function publicConfig() {
   return {
     actions: ACTIONS,
     feedbackMax: FEEDBACK_MAX,
     barMax: XP_BAR_MAX,
-    levels: LEVELS.map(({ key, name, min, color, gate, reward }) => ({ key, name, min, color, gate, reward })),
+    levels: LEVELS.map(({ key, name, min, color, gate, reward, competitive }) => ({ key, name, min, color, gate, reward, competitive: !!competitive })),
     badges: BADGES,
+    credit: { slotsPerFilm: CREDIT_SLOTS_PER_FILM, weights: CREDIT_WEIGHTS },
+    featuredTitle: 'The Carrier',
   };
 }

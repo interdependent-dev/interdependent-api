@@ -50,10 +50,10 @@ test('null dimension values are not counted', () => {
 test('levelForXp picks the highest threshold reached', () => {
   assert.strictEqual(levelForXp(0).key, 'reader');
   assert.strictEqual(levelForXp(59).key, 'reader');
-  assert.strictEqual(levelForXp(60).key, 'scout');
-  assert.strictEqual(levelForXp(299).key, 'scout');
-  assert.strictEqual(levelForXp(300).key, 'curator');
-  assert.strictEqual(levelForXp(5000).key, 'partner');
+  assert.strictEqual(levelForXp(60).key, 'event');
+  assert.strictEqual(levelForXp(279).key, 'event');
+  assert.strictEqual(levelForXp(280).key, 'podcast');
+  assert.strictEqual(levelForXp(9999).key, 'credit');
 });
 
 test('thresholds are strictly increasing', () => {
@@ -71,39 +71,39 @@ test('gateMet / unmetGate', () => {
 
 // ── scoreReader: the hook ────────────────────────────────────────────────────
 
-test('one quality read + one complete feedback unlocks Scout (the first reward)', () => {
-  const r = scoreReader({ verifiedReads: 1, feedbacks: 1, feedbackXp: 55 });
+test('reading + reviewing The Carrier unlocks the event perk (first reward)', () => {
+  const r = scoreReader({ verifiedReads: 1, feedbacks: 1, feedbackXp: 55, featuredRead: 1, featuredFeedback: 1 });
   assert.strictEqual(r.totalXp, ACTIONS.read + 55); // 65
-  assert.strictEqual(r.level.key, 'scout');
-  const scout = r.levels.find((l) => l.key === 'scout');
-  assert.strictEqual(scout.unlocked, true);
-  assert.strictEqual(r.nextLevel.key, 'curator');
-  assert.strictEqual(r.nextLevel.xpToGo, 300 - 65);
+  assert.strictEqual(r.level.key, 'event');
+  const ev = r.levels.find((l) => l.key === 'event');
+  assert.strictEqual(ev.unlocked, true);
+  assert.strictEqual(r.nextLevel.key, 'podcast');
+  assert.strictEqual(r.nextLevel.xpToGo, 280 - 65);
 });
 
 test('XP alone cannot buy a level — the gate must be met', () => {
-  // 100 reads = 1000 XP (past Curator's 300) but zero feedback ⇒ even Scout's
-  // gate (1 read + 1 feedback) is unmet, so the reward stays locked.
+  // 100 reads = 1000 XP (past several thresholds) but no Carrier read/feedback ⇒
+  // even the event perk (read The Carrier + feedback on it) stays locked.
   const r = scoreReader({ verifiedReads: 100, feedbacks: 0, feedbackXp: 0 });
   assert.strictEqual(r.totalXp, 1000);
-  const scout = r.levels.find((l) => l.key === 'scout');
-  assert.strictEqual(scout.reached, true);
-  assert.strictEqual(scout.gateMet, false);
-  assert.strictEqual(scout.unlocked, false);
+  const ev = r.levels.find((l) => l.key === 'event');
+  assert.strictEqual(ev.reached, true);
+  assert.strictEqual(ev.gateMet, false);
+  assert.strictEqual(ev.unlocked, false);
   assert.strictEqual(r.level.key, 'reader'); // current level = highest UNLOCKED
-  assert.ok(scout.unmet.some((u) => u.key === 'feedbacks'));
+  assert.ok(ev.unmet.some((u) => u.key === 'featuredRead' || u.key === 'featuredFeedback'));
 });
 
-test('reading + recommending can only take you so far — Tastemaker needs a landed rec', () => {
-  // Lots of reads, feedback, champions → enough XP for Tastemaker (800) and its
-  // champions gate (3), but no recommendation has landed ⇒ stays Curator.
-  const r = scoreReader({ verifiedReads: 40, feedbacks: 10, feedbackXp: 300, champions: 5, recsLanded: 0 });
-  assert.ok(r.totalXp >= 800);
-  const tm = r.levels.find((l) => l.key === 'tastemaker');
-  assert.strictEqual(tm.reached, true);
-  assert.strictEqual(tm.gateMet, false);
-  assert.ok(tm.unmet.some((u) => u.key === 'recsLanded'));
-  assert.strictEqual(r.level.key, 'curator');
+test('reading + championing can only take you so far — voting needs a landed rec', () => {
+  // Plenty of reads/feedback/champions (+ Carrier done) → enough XP for voting
+  // (1400) and its champions gate, but no recommendation has LANDED ⇒ stays at chat.
+  const r = scoreReader({ verifiedReads: 60, feedbacks: 12, feedbackXp: 600, champions: 12, recsLanded: 0, featuredRead: 1, featuredFeedback: 1 });
+  assert.ok(r.totalXp >= 1400);
+  const voting = r.levels.find((l) => l.key === 'voting');
+  assert.strictEqual(voting.reached, true);
+  assert.strictEqual(voting.gateMet, false);
+  assert.ok(voting.unmet.some((u) => u.key === 'recsLanded'));
+  assert.strictEqual(r.level.key, 'chat');
 });
 
 test('badges fire on their thresholds', () => {

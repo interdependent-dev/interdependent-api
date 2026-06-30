@@ -46,8 +46,12 @@ function recsByNameFromEvents(events) {
 }
 
 // Build per-reader `stats` from raw rows. Pure given its inputs.
-//   { readers[], events[], champions[], feedback[], scripts[] } → { [readerId]: stats }
-export function aggregateReaderStats({ readers, events, champions, feedback, scripts }) {
+//   { readers[], events[], champions[], feedback[], scripts[], featuredScriptId? }
+//   → { [readerId]: stats }
+// featuredScriptId (The Carrier) gates the event perk: featuredRead/featuredFeedback
+// reflect activity on that specific script. If it's null/unknown, they fall back to
+// "any read / any feedback" so the perk is never permanently unreachable.
+export function aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId = null }) {
   const pagesById = {};
   (scripts || []).forEach((s) => { pagesById[s.id] = s.page_count; });
 
@@ -70,9 +74,10 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       transcript: f.transcript,
       hasVoice: !!f.audio_path,
     });
-    const a = fbByReader[f.reader_id] || (fbByReader[f.reader_id] = { count: 0, xp: 0 });
+    const a = fbByReader[f.reader_id] || (fbByReader[f.reader_id] = { count: 0, xp: 0, scripts: new Set() });
     a.count += 1;
     a.xp += xp;
+    if (f.script_id) a.scripts.add(f.script_id);
   });
 
   const statsByReader = {};
@@ -87,7 +92,19 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       (champByScript[c.script_id] || []).some((o) => o.reader_id !== r.id && o.added_at > c.added_at)
     ).length;
 
-    const fb = fbByReader[r.id] || { count: 0, xp: 0 };
+    const fb = fbByReader[r.id] || { count: 0, xp: 0, scripts: new Set() };
+
+    // The Carrier gate: did this reader FINISH the featured script + leave feedback
+    // on it? Falls back to "any read / any feedback" when no featured script is set.
+    let featuredRead, featuredFeedback;
+    if (featuredScriptId) {
+      const fr = rd[featuredScriptId];
+      featuredRead = fr && isFinishedRead(fr.depth, fr.seconds, pagesById[featuredScriptId]) ? 1 : 0;
+      featuredFeedback = fb.scripts.has(featuredScriptId) ? 1 : 0;
+    } else {
+      featuredRead = verifiedReads >= 1 ? 1 : 0;
+      featuredFeedback = fb.count >= 1 ? 1 : 0;
+    }
 
     const recs = Object.values(recByName[String(r.display_name || r.handle || '').toLowerCase()] || {});
     const recsSent = recs.length;
@@ -107,6 +124,8 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       recsOpened,
       recsLanded,
       recsConverted,
+      featuredRead,
+      featuredFeedback,
       writerLikes: 0, // dormant until the writer surface ships
       investorFollows: 0, // dormant until the investor surface ships
     };

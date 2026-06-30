@@ -13,8 +13,9 @@
 // the spoofable public POST /events traffic — earn nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { scoreReader } from '../lib/xpConfig.js';
+import { scoreReader, CREDIT_WEIGHTS, CREDIT_SLOTS_PER_FILM } from '../lib/xpConfig.js';
 import { aggregateReaderStats } from '../lib/xpAggregate.js';
+import { isFinishedRead } from '../lib/readGate.js';
 import {
   getReaders,
   listReadEvents,
@@ -56,6 +57,17 @@ function shapeReader(stats, reader) {
   };
 }
 
+// Resolve the featured script (The Carrier) that gates the event perk: an
+// explicit FEATURED_SCRIPT_ID, else the first script whose title matches
+// FEATURED_SCRIPT_TITLE (default "carrier"), else null (gate falls back to
+// any-read/any-feedback in the aggregator).
+function resolveFeaturedScriptId(scripts) {
+  if (process.env.FEATURED_SCRIPT_ID) return process.env.FEATURED_SCRIPT_ID;
+  const re = new RegExp(process.env.FEATURED_SCRIPT_TITLE || 'carrier', 'i');
+  const hit = (scripts || []).find((s) => re.test(s.title || ''));
+  return hit ? hit.id : null;
+}
+
 // One reader's XP, by handle. Returns null if the handle doesn't exist.
 export async function getReaderXp(handle) {
   const reader = await getReaderByHandle(handle).catch(() => null);
@@ -70,7 +82,8 @@ export async function getReaderXp(handle) {
   ]);
   // We only need this reader's stats, but recommend-funnel attribution needs the
   // full event set, so aggregate over a one-reader list.
-  const statsByReader = aggregateReaderStats({ readers: [reader], events, champions, feedback, scripts });
+  const featuredScriptId = resolveFeaturedScriptId(scripts);
+  const statsByReader = aggregateReaderStats({ readers: [reader], events, champions, feedback, scripts, featuredScriptId });
   return shapeReader(statsByReader[reader.id], reader);
 }
 
@@ -86,10 +99,99 @@ export async function getAllReaderXp() {
     getFeedbackForXp(),
     getScriptTitles(),
   ]);
-  const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts });
+  const featuredScriptId = resolveFeaturedScriptId(scripts);
+  const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId });
   const list = readers
     .map((r) => shapeReader(statsByReader[r.id], r))
     .filter((r) => r.totalXp > 0 || r.raw.verifiedReads > 0 || r.raw.champions > 0)
     .sort((a, b) => b.totalXp - a.totalXp || b.raw.recsLanded - a.raw.recsLanded);
   return list;
+}
+
+// Per-film "Story Scout" screen-credit contenders. The credit for a film is
+// SCARCE (CREDIT_SLOTS_PER_FILM slots) and goes to the curators who contributed
+// most to THAT film — ranked by the actions we reward (spotting it early, a
+// recommendation that landed, championing it, reading + reviewing it) — among the
+// eligible (those who reached the Story Scout tier globally). Decides WHO is
+// credited on each film and HOW MANY.
+export async function filmCreditContenders(scriptId) {
+  const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
+  const [readers, events, champions, feedback, scripts] = await Promise.all([
+    getReaders(), listReadEvents({ sinceISO }), getChampions(), getFeedbackForXp(), getScriptTitles(),
+  ]);
+  const script = (scripts || []).find((s) => s.id === scriptId) || {};
+  const pages = script.page_count;
+  const featuredScriptId = resolveFeaturedScriptId(scripts);
+
+  // global standing → who is ELIGIBLE for screen credit (reached the credit tier)
+  const allStats = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId });
+  const standing = {};
+  readers.forEach((r) => {
+    const scored = scoreReader(allStats[r.id]);
+    const credit = scored.levels.find((l) => l.key === 'credit');
+    standing[r.id] = { totalXp: scored.totalXp, eligible: !!(credit && credit.unlocked) };
+  });
+
+  // per-film signals
+  const champs = (champions || []).filter((c) => c.script_id === scriptId);
+  const reads = {}; // reader_id -> furthest depth/seconds on this film
+  for (const e of events) {
+    if (e.event_type === 'read_progress' && e.reader_id && e.script_id === scriptId) {
+      const x = reads[e.reader_id] || (reads[e.reader_id] = { depth: 0, seconds: 0 });
+      if (e.depth_pct != null) x.depth = Math.max(x.depth, e.depth_pct);
+      if (e.seconds != null) x.seconds = Math.max(x.seconds, e.seconds);
+    }
+  }
+  const fedBack = new Set((feedback || []).filter((f) => f.script_id === scriptId && f.reader_id).map((f) => f.reader_id));
+  // landed recommenders for this film (their share link drove a finished read)
+  const recReads = {};
+  for (const e of events) {
+    if (e.recommender && e.script_id === scriptId) {
+      const rn = String(e.recommender).toLowerCase();
+      const k = rn + '::' + e.session_id;
+      const x = recReads[k] || (recReads[k] = { depth: 0, seconds: 0, rec: rn });
+      if (e.event_type === 'read_progress') {
+        if (e.depth_pct != null) x.depth = Math.max(x.depth, e.depth_pct);
+        if (e.seconds != null) x.seconds = Math.max(x.seconds, e.seconds);
+      }
+    }
+  }
+  const landedRec = new Set();
+  Object.values(recReads).forEach((x) => { if (isFinishedRead(x.depth, x.seconds, pages)) landedRec.add(x.rec); });
+
+  const byId = {};
+  readers.forEach((r) => { byId[r.id] = r; });
+  const ensure = (id) => (byId[id] ? (contrib[id] || (contrib[id] = { early: false, recLanded: false, champion: false, readFeedback: false })) : null);
+  const contrib = {};
+  champs.forEach((c) => {
+    const x = ensure(c.reader_id); if (!x) return;
+    x.champion = true;
+    // early = championed this film before another reader later did
+    if (champs.some((o) => o.reader_id !== c.reader_id && o.added_at > c.added_at)) x.early = true;
+  });
+  Object.entries(reads).forEach(([id, v]) => {
+    if (isFinishedRead(v.depth, v.seconds, pages) && fedBack.has(id)) { const x = ensure(id); if (x) x.readFeedback = true; }
+  });
+  readers.forEach((r) => {
+    if (landedRec.has(String(r.display_name || r.handle || '').toLowerCase())) { const x = ensure(r.id); if (x) x.recLanded = true; }
+  });
+
+  const contenders = Object.entries(contrib).map(([id, x]) => {
+    const r = byId[id];
+    const score = (x.early ? CREDIT_WEIGHTS.earlySpot : 0) + (x.recLanded ? CREDIT_WEIGHTS.recLanded : 0)
+      + (x.champion ? CREDIT_WEIGHTS.champion : 0) + (x.readFeedback ? CREDIT_WEIGHTS.readFeedback : 0);
+    return {
+      handle: r.handle, name: r.display_name || r.handle,
+      score, ...x,
+      eligible: standing[id].eligible, totalXp: standing[id].totalXp,
+    };
+  }).filter((c) => c.score > 0)
+    .sort((a, b) => b.score - a.score || b.totalXp - a.totalXp);
+
+  // award the limited slots to the top ELIGIBLE contenders
+  const awarded = [];
+  for (const c of contenders) {
+    if (c.eligible && awarded.length < CREDIT_SLOTS_PER_FILM) { c.awarded = true; awarded.push(c.handle); }
+  }
+  return { scriptId, title: script.title || null, slotsPerFilm: CREDIT_SLOTS_PER_FILM, awarded, contenders };
 }

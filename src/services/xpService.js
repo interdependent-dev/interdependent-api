@@ -13,7 +13,7 @@
 // the spoofable public POST /events traffic — earn nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { scoreReader, CREDIT_WEIGHTS, CREDIT_SLOTS_PER_FILM } from '../lib/xpConfig.js';
+import { scoreReader, CREDIT_WEIGHTS, CREDIT_SLOTS_PER_FILM, EARLY_CHAMPION_RANK } from '../lib/xpConfig.js';
 import { aggregateReaderStats } from '../lib/xpAggregate.js';
 import { isFinishedRead } from '../lib/readGate.js';
 import {
@@ -63,9 +63,13 @@ function shapeReader(stats, reader) {
 // any-read/any-feedback in the aggregator).
 function resolveFeaturedScriptId(scripts) {
   if (process.env.FEATURED_SCRIPT_ID) return process.env.FEATURED_SCRIPT_ID;
-  const re = new RegExp(process.env.FEATURED_SCRIPT_TITLE || 'carrier', 'i');
-  const hit = (scripts || []).find((s) => re.test(s.title || ''));
-  return hit ? hit.id : null;
+  // Substring match (no RegExp → no metacharacter throw on a bad env value), and a
+  // deterministic tie-break so the pick is stable when several titles match.
+  const needle = String(process.env.FEATURED_SCRIPT_TITLE || 'carrier').toLowerCase();
+  const hits = (scripts || []).filter((s) => String(s.title || '').toLowerCase().includes(needle));
+  if (!hits.length) return null;
+  hits.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return hits[0].id;
 }
 
 // One reader's XP, by handle. Returns null if the handle doesn't exist.
@@ -161,19 +165,23 @@ export async function filmCreditContenders(scriptId) {
 
   const byId = {};
   readers.forEach((r) => { byId[r.id] = r; });
-  const ensure = (id) => (byId[id] ? (contrib[id] || (contrib[id] = { early: false, recLanded: false, champion: false, readFeedback: false })) : null);
   const contrib = {};
+  const ensure = (id) => (byId[id] ? (contrib[id] || (contrib[id] = { early: false, recLanded: false, champion: false, readFeedback: false })) : null);
   champs.forEach((c) => {
     const x = ensure(c.reader_id); if (!x) return;
     x.champion = true;
-    // early = championed this film before another reader later did
-    if (champs.some((o) => o.reader_id !== c.reader_id && o.added_at > c.added_at)) x.early = true;
+    // early = among the first EARLY_CHAMPION_RANK to champion this film AND the crowd
+    // later validated it (someone else championed after) — scarce, not "all-but-last".
+    const earlier = champs.filter((o) => o.added_at < c.added_at).length;
+    const laterByOther = champs.some((o) => o.reader_id !== c.reader_id && o.added_at > c.added_at);
+    if (earlier < EARLY_CHAMPION_RANK && laterByOther) x.early = true;
   });
   Object.entries(reads).forEach(([id, v]) => {
     if (isFinishedRead(v.depth, v.seconds, pages) && fedBack.has(id)) { const x = ensure(id); if (x) x.readFeedback = true; }
   });
   readers.forEach((r) => {
-    if (landedRec.has(String(r.display_name || r.handle || '').toLowerCase())) { const x = ensure(r.id); if (x) x.recLanded = true; }
+    // attribute by stable handle (not the user-settable display_name)
+    if (landedRec.has(String(r.handle || '').toLowerCase())) { const x = ensure(r.id); if (x) x.recLanded = true; }
   });
 
   const contenders = Object.entries(contrib).map(([id, x]) => {

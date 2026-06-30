@@ -47,14 +47,19 @@ export async function notifyReaderActivity({ readerId, handle, kind, scriptTitle
       await send(reader.email, championEmail(name, scriptTitle));
     }
 
-    // celebrate any newly-unlocked perk (once ever, per perk)
+    // Celebrate a newly-unlocked perk. We claim EVERY freshly-unlocked perk (so none
+    // re-sends later) but email at most the SINGLE HIGHEST one per action — a
+    // belt-and-suspenders guard so an unseeded reader can never get a burst of
+    // historical perk emails. (Pair with src/db/seed_reader_notifications.mjs, which
+    // pre-claims existing milestones at launch.)
     const xp = await getReaderXp(handle).catch(() => null);
     if (xp && xp.levels) {
+      const fresh = [];
       for (const lvl of xp.levels) {
-        if (lvl.min > 0 && lvl.unlocked && (await claimNotification(reader.id, 'unlock', lvl.key))) {
-          await send(reader.email, unlockEmail(name, lvl.key));
-        }
+        if (lvl.min > 0 && lvl.unlocked && (await claimNotification(reader.id, 'unlock', lvl.key))) fresh.push(lvl);
       }
+      const top = fresh.sort((a, b) => b.min - a.min)[0];
+      if (top) await send(reader.email, unlockEmail(name, top.key));
     }
   } catch (err) {
     console.error('notifyReaderActivity error:', err.message);

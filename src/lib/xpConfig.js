@@ -43,6 +43,11 @@ export const ACTIONS = {
   investorFollow: 25, // a Ventures/Anchor investor follows your curation
 };
 
+// An "early spot" is scarce on purpose: you count as early only if you were among
+// the first EARLY_CHAMPION_RANK readers to champion a script AND the crowd later
+// validated it (someone else championed after you). Tunable.
+export const EARLY_CHAMPION_RANK = 3;
+
 // Max XP a single feedback row can earn (base + dims + notes + voice).
 export const FEEDBACK_MAX =
   ACTIONS.feedbackBase + ACTIONS.feedbackDimensionsCap + ACTIONS.feedbackNotes + ACTIONS.feedbackVoice;

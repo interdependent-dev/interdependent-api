@@ -168,11 +168,25 @@ export async function getChampions() {
 
 // ── reader feedback ──────────────────────────────────────────────────────────
 export async function insertFeedback(row) {
-  const { data, error } = await supabase.from('reader_feedback').insert({
+  const fields = {
     script_id: row.scriptId, reader_id: row.readerId ?? null,
     champion_verdict: row.championVerdict ?? null, dimensions: row.dimensions ?? null,
     text: row.text ?? null, transcript: row.transcript ?? null,
-  }).select('id').single();
+  };
+  // Idempotent per (reader, script): editing/re-submitting feedback UPDATES the
+  // existing row rather than inserting a duplicate, so XP/gates can't be farmed.
+  // (Guest feedback — no reader_id — always inserts.)
+  if (row.readerId) {
+    const existing = await supabase.from('reader_feedback')
+      .select('id').eq('reader_id', row.readerId).eq('script_id', row.scriptId)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (existing.data?.id) {
+      const { error } = await supabase.from('reader_feedback').update(fields).eq('id', existing.data.id);
+      if (error) throw new Error(`DB insertFeedback(update): ${error.message}`);
+      return existing.data.id;
+    }
+  }
+  const { data, error } = await supabase.from('reader_feedback').insert(fields).select('id').single();
   if (error) throw new Error(`DB insertFeedback: ${error.message}`);
   return data.id;
 }

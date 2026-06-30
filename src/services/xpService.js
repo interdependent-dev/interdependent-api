@@ -16,6 +16,7 @@
 import { scoreReader, CREDIT_WEIGHTS, CREDIT_SLOTS_PER_FILM, EARLY_CHAMPION_RANK } from '../lib/xpConfig.js';
 import { aggregateReaderStats } from '../lib/xpAggregate.js';
 import { isFinishedRead } from '../lib/readGate.js';
+import { roleName } from '../lib/roleRegistry.js';
 import {
   getReaders,
   listReadEvents,
@@ -35,7 +36,9 @@ function shapeReader(stats, reader) {
     // ONE role; the XP number is the identity. The bar shows role + number and a
     // gradient of commitment — no named sub-levels. `levels` are the perk
     // MILESTONES along the bar (thresholds + rewards + gates), not separate roles.
-    role: 'Reader',
+    // Sourced from the role registry (still 'Reader' today) so the OA §16.3
+    // roster is the single source of truth, not a bare string literal here.
+    role: roleName('reader'),
     totalXp: scored.totalXp,
     barMax: scored.barMax,
     level: scored.level,
@@ -70,6 +73,19 @@ function resolveFeaturedScriptId(scripts) {
   if (!hits.length) return null;
   hits.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   return hits[0].id;
+}
+
+// The featured (Carrier) script id, for clients that want to open it in ONE
+// fetch (e.g. the site's Carrier deep-link) instead of resolving it themselves.
+// Best-effort and SILENT: any failure (DB hiccup, no match) returns null so the
+// public /xp/config endpoint can surface featuredScriptId without ever 500-ing.
+export async function getFeaturedScriptId() {
+  try {
+    const scripts = await getScriptTitles();
+    return resolveFeaturedScriptId(scripts);
+  } catch {
+    return null;
+  }
 }
 
 // One reader's XP, by handle. Returns null if the handle doesn't exist.

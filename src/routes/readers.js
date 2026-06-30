@@ -7,6 +7,7 @@ import {
   authBegin,
   authComplete,
   getReader,
+  getRecoveryEmail,
   setRecoveryEmail,
   addDeviceBegin,
   addDeviceComplete,
@@ -33,8 +34,12 @@ router.post('/register/complete', registerComplete);
 router.post('/auth/begin', authBegin);
 router.post('/auth/complete', authComplete);
 
-// Recovery email — set/update on a signed-in account (also how the
-// pre-recovery accounts backfill one). Needs a fresh action token.
+// Recovery email — read the address on file, or set/update it on a signed-in
+// account (also how the pre-recovery accounts backfill one). Both halves need a
+// fresh action token and derive the reader from the token (never a path param),
+// so a reader can only ever touch their OWN email. Declared before '/:handle'
+// so 'email' can't be mistaken for a reader handle.
+router.get('/email', requireActionToken, getRecoveryEmail);
 router.post('/email', requireActionToken, setRecoveryEmail);
 
 // Add a device — register an additional passkey while signed in. Both halves

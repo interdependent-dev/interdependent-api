@@ -223,6 +223,24 @@ export async function getFeedbackForXp() {
   return data || [];
 }
 
+// Claim a one-time notification slot — idempotency for XP emails. Returns true
+// ONLY for the first caller of a (reader_id, kind, ref); the UNIQUE constraint
+// makes duplicates fail, which we treat as "already sent". Any other failure
+// (e.g. the table isn't migrated yet) returns false so we never spam or throw.
+export async function claimNotification(readerId, kind, ref = '') {
+  const { data, error } = await supabase
+    .from('reader_notifications')
+    .insert({ reader_id: readerId, kind, ref })
+    .select('id');
+  if (error) {
+    if (!/duplicate|unique|23505/i.test(error.message)) {
+      console.error('claimNotification error:', error.message);
+    }
+    return false;
+  }
+  return !!(data && data.length);
+}
+
 // All reader feedback with notes — for the READERS page (see what each reader said).
 export async function getAllFeedback() {
   const { data, error } = await supabase.from('reader_feedback')

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { getReaderByHandle } from '../services/readerService.js';
 import { getScriptById } from '../services/supabaseService.js';
+import { notifyReaderActivity } from '../services/xpEmailService.js';
 import {
   getLeaderboardByReaderId,
   getLeaderboardEntry,
@@ -82,6 +83,8 @@ export async function addScript(req, res, next) {
 
   const entries = await getLeaderboardByReaderId(reader.id);
   res.status(201).json(formatLeaderboard(reader, entries));
+  // fire-and-forget: a first-champion thank-you + any newly-unlocked perk emails.
+  notifyReaderActivity({ readerId: reader.id, handle: reader.handle, kind: 'champion', scriptTitle: script.title });
 }
 
 // DELETE /leaderboard/:handle/scripts/:scriptId  — requires actionToken

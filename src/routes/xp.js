@@ -1,16 +1,20 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { publicConfig } from '../lib/xpConfig.js';
-import { getAllReaderXp, filmCreditContenders } from '../services/xpService.js';
+import { getAllReaderXp, filmCreditContenders, getFeaturedScriptId } from '../services/xpService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
 
 // Public — the static economy (levels, colors, rewards, points) the XP bar
-// fetches once to render its zones. No reader data, safe to expose.
-router.get('/config', (_req, res) => {
+// fetches once to render its zones. No reader data, safe to expose. Also carries
+// `featuredScriptId` (the Carrier) so the site can deep-link/open it in one
+// fetch; resolution is best-effort and can never 500 this endpoint (null on any
+// failure).
+router.get('/config', async (_req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
-  res.json(publicConfig());
+  const featuredScriptId = await getFeaturedScriptId().catch(() => null);
+  res.json({ ...publicConfig(), featuredScriptId });
 });
 
 // Gated — every reader ranked by XP, for the leaderboard (same portal passcode

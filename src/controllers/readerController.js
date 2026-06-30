@@ -381,6 +381,20 @@ export async function uploadPhoto(req, res, next) {
 
 const setEmailSchema = z.object({ email: z.string().email('A valid email is required').max(254) });
 
+// Read the signed-in reader's saved recovery email (or null). Same trust level
+// as setRecoveryEmail (requireActionToken) — the reader is derived from the
+// action token, never a path param, so one reader can't read another's email.
+export async function getRecoveryEmail(req, res, next) {
+  let reader;
+  try {
+    reader = await getReaderById(req.reader.id);
+  } catch (err) {
+    return next(new AppError(`Could not load recovery email: ${err.message}`, 500));
+  }
+  if (!reader) return next(new AppError('Reader account not found', 404, 'reader_not_found'));
+  res.json({ email: reader.email || null });
+}
+
 export async function setRecoveryEmail(req, res, next) {
   const parsed = setEmailSchema.safeParse(req.body);
   if (!parsed.success) return next(new AppError('A valid email is required', 400, 'email_required'));

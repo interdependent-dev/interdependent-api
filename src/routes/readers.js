@@ -21,7 +21,9 @@ import { requireActionToken } from '../middleware/requireActionToken.js';
 import { getReaders, listReadEvents, getScriptTitles, getAllFeedback } from '../services/supabaseService.js';
 import { publicPhotoUrl } from '../services/readerService.js';
 import { readingPct, isFinishedRead } from '../lib/readGate.js';
-import { getReaderXp } from '../services/xpService.js';
+import { getReaderXp, isCuratorHandle } from '../services/xpService.js';
+import { getTasteMatches } from '../services/discoveryService.js';
+import { optionalReader } from '../middleware/optionalReader.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -158,6 +160,20 @@ router.get('/:handle/xp', async (req, res, next) => {
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }
+});
+
+// GET /readers/:handle/taste — "readers who read like you" (taste match from verdicts).
+// Personal: only the reader themselves (proven via the session token) or a Curator sees it.
+router.get('/:handle/taste', optionalReader, async (req, res, next) => {
+  try {
+    const handle = req.params.handle;
+    const self = req.reader?.handle && req.reader.handle.toLowerCase() === String(handle).toLowerCase();
+    const allowed = self || (await isCuratorHandle(req.reader?.handle));
+    if (!allowed) return res.json({ matches: [], canSee: false });
+    const matches = await getTasteMatches(handle);
+    res.set('Cache-Control', 'private, max-age=30');  // per-reader result — private cache only
+    res.json({ matches, canSee: true });
+  } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 
 // Public reader profile

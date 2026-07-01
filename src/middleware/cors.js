@@ -15,7 +15,11 @@ export const corsMiddleware = cors({
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  // 'X-Reader-Session' carries the 30-day reader session token used for read-first
+  // personalization/identity (curator eval-gating, champion state, taste match). It is
+  // a non-safelisted header, so it MUST be echoed here or the browser's preflight blocks
+  // every cross-origin request that sends it (www.interdependent.studio → this API).
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Reader-Session'],
   credentials: true,
   maxAge: 86400,
 });

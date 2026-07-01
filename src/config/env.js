@@ -18,8 +18,9 @@ const envSchema = z.object({
   ACTION_TOKEN_EXPIRY: z.string().default('300'),  // seconds; 5 min default
   // Read-first / Curator model.
   READER_SESSION_EXPIRY: z.string().default('30d'), // long-lived reader IDENTITY (read personalization only; NOT writes)
-  CURATOR_MIN_XP: z.string().default('700'),         // XP at/above which a reader is a Curator (sees AI evals, curates)
-  ADMIN_HANDLES: z.string().default(''),             // comma-sep reader handles that are always Curator/admin (staff)
+  CURATOR_MIN_XP: z.string().default('1724'),        // XP at/above which a reader is a Curator (sees AI evals, curates) — "the magic number"
+  // Always-Curator/admin handles (staff). Baked default; overridable via the env var on Render.
+  ADMIN_HANDLES: z.string().default('christopher-amell,abhinav-vadhera,michael-lin'),
 });
 
 const parsed = envSchema.safeParse(process.env);

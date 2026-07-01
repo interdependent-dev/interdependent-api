@@ -164,6 +164,13 @@ export async function registerComplete(req, res, next) {
     return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
   }
 
+  // Admin/Curator handles are RESERVED — they cannot be self-registered, so a handle
+  // can't be squatted to claim Curator authority + AI-eval access. (Already-registered
+  // admins are also protected by the handle_taken check below.)
+  if (env.adminHandles.has(handle)) {
+    return next(new AppError('This handle is reserved', 409, 'handle_reserved'));
+  }
+
   // Reject if handle is already taken — returning readers on a new device
   // should use the discoverable auth flow, not re-register.
   const existing = await getReaderByHandle(handle).catch(() => null);

@@ -16,7 +16,6 @@ export async function getLeaderboardByReaderId(readerId) {
       scripts (
         id,
         title,
-        filename,
         page_count,
         word_count,
         status,

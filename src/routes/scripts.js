@@ -9,6 +9,7 @@ import {
   createSignedPdfUrl,
   markScriptProcessing,
   mergeScriptEvaluationJson,
+  setScriptSurfaced,
 } from '../services/supabaseService.js';
 import { extractText } from '../services/pdfService.js';
 import { runEvaluation } from '../controllers/evaluateController.js';
@@ -36,11 +37,28 @@ router.get('/', async (req, res, next) => {
   const offset = parseInt(req.query.offset ?? '0', 10);
 
   try {
-    const scripts = await listScripts({ limit, offset });
     const canSeeEval = await isCuratorHandle(req.reader?.handle);
+    // Read-first surfacing: Readers only see surfaced scripts; Curators see all (to curate).
+    const scripts = await listScripts({ limit, offset, surfacedOnly: !canSeeEval });
     res.json({ data: canSeeEval ? scripts : scripts.map(stripEval), limit, offset });
   } catch (err) {
     next(new AppError(err.message, 500));
+  }
+});
+
+// POST /scripts/:id/surface  { surfaced?: boolean }  — a Curator/admin toggles whether
+// Readers see this script in their slate. Identity comes from the reader session token
+// (optionalReader); authority from isCuratorHandle. Defaults to surfacing (true).
+router.post('/:id/surface', async (req, res, next) => {
+  try {
+    if (!(await isCuratorHandle(req.reader?.handle))) {
+      return next(new AppError('Curator access required', 403, 'curator_required'));
+    }
+    const surfaced = req.body?.surfaced !== false;
+    const row = await setScriptSurfaced({ id: req.params.id, surfaced });
+    res.json(row);
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
   }
 });
 

@@ -371,14 +371,35 @@ export async function markScriptProcessing({ id }) {
 /**
  * List all scripts with their submitting user's name and email.
  */
-export async function listScripts({ limit = 50, offset = 0 } = {}) {
-  const { data, error } = await supabase
+export async function listScripts({ limit = 50, offset = 0, surfacedOnly = false } = {}) {
+  const base = () => supabase
     .from('scripts')
     .select('*, users(name, email)')
     .order('submitted_at', { ascending: false })
     .range(offset, offset + limit - 1);
-
+  // Read-first surfacing: Readers only see scripts a Curator has surfaced.
+  let { data, error } = await (surfacedOnly ? base().eq('surfaced_to_readers', true) : base());
+  // Resilience: if the surfacing migration hasn't run yet, fail OPEN to the full
+  // slate (pre-Stage-2 behavior) instead of 500-ing the portal.
+  if (error && surfacedOnly && /surfaced_to_readers/i.test(error.message || '')) {
+    ({ data, error } = await base());
+  }
   if (error) throw new Error(`DB listScripts: ${error.message}`);
+  return data;
+}
+
+/**
+ * Surface / un-surface a script to Readers (Curator/admin action). Stamps
+ * surfaced_at when turning on, clears it when turning off.
+ */
+export async function setScriptSurfaced({ id, surfaced }) {
+  const { data, error } = await supabase
+    .from('scripts')
+    .update({ surfaced_to_readers: !!surfaced, surfaced_at: surfaced ? new Date().toISOString() : null })
+    .eq('id', id)
+    .select('id, surfaced_to_readers, surfaced_at')
+    .single();
+  if (error) throw new Error(`DB setScriptSurfaced: ${error.message}`);
   return data;
 }
 

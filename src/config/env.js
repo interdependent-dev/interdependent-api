@@ -16,6 +16,10 @@ const envSchema = z.object({
   RP_ID: z.string().default('interdependent.studio'),
   RP_NAME: z.string().default('Interdependent Studio'),
   ACTION_TOKEN_EXPIRY: z.string().default('300'),  // seconds; 5 min default
+  // Read-first / Curator model.
+  READER_SESSION_EXPIRY: z.string().default('30d'), // long-lived reader IDENTITY (read personalization only; NOT writes)
+  CURATOR_MIN_XP: z.string().default('700'),         // XP at/above which a reader is a Curator (sees AI evals, curates)
+  ADMIN_HANDLES: z.string().default(''),             // comma-sep reader handles that are always Curator/admin (staff)
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -47,6 +51,11 @@ export const env = {
   rpId: parsed.data.RP_ID,
   rpName: parsed.data.RP_NAME,
   actionTokenExpiry: parseInt(parsed.data.ACTION_TOKEN_EXPIRY, 10),
+  readerSessionExpiry: parsed.data.READER_SESSION_EXPIRY,
+  curatorMinXp: parseInt(parsed.data.CURATOR_MIN_XP, 10),
+  adminHandles: new Set(
+    parsed.data.ADMIN_HANDLES.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
+  ),
 };
 
 if (process.env.ANTHROPIC_MODEL && process.env.ANTHROPIC_MODEL.trim() !== env.anthropicModel) {

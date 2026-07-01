@@ -61,6 +61,17 @@ function issueActionToken(reader) {
   );
 }
 
+// A long-lived reader IDENTITY token — proves who the reader is for READ
+// personalization (AI-eval gating, surfacing, chat visibility). It is NOT
+// accepted for writes; those still require a fresh leaderboard_action token.
+function issueReaderSession(reader) {
+  return jwt.sign(
+    { purpose: 'reader_session', readerId: reader.id, handle: reader.handle },
+    env.jwtSecret,
+    { expiresIn: env.readerSessionExpiry },
+  );
+}
+
 // ─── Registration ────────────────────────────────────────────────────────────
 
 const registerBeginSchema = z.object({
@@ -188,8 +199,10 @@ export async function registerComplete(req, res, next) {
   // presence, so the first write (e.g. Champion) shouldn't demand a second
   // passkey prompt immediately after registering.
   const actionToken = issueActionToken(reader);
+  const sessionToken = issueReaderSession(reader);
   res.status(201).json({
     actionToken,
+    sessionToken,
     readerId: reader.id,
     handle: reader.handle,
     displayName: reader.display_name,
@@ -302,9 +315,11 @@ export async function authComplete(req, res, next) {
   if (!reader) return next(new AppError('Reader account not found', 404));
 
   const actionToken = issueActionToken(reader);
+  const sessionToken = issueReaderSession(reader);
 
   res.json({
     actionToken,
+    sessionToken,
     readerId: reader.id,
     handle: reader.handle,
     displayName: reader.display_name,
@@ -503,10 +518,12 @@ export async function addDeviceComplete(req, res, next) {
 
   const reader = await getReaderById(req.reader.id);
   const actionToken = reader ? issueActionToken(reader) : null;
+  const sessionToken = reader ? issueReaderSession(reader) : null;
   res.status(201).json({
     ok: true,
     credentialAdded: true,
     actionToken,
+    sessionToken,
     readerId: req.reader.id,
     handle: reader?.handle,
     displayName: reader?.display_name,
@@ -691,8 +708,10 @@ export async function recoverComplete(req, res, next) {
   if (!reader) return next(new AppError('Reader account not found', 404));
 
   const actionToken = issueActionToken(reader);
+  const sessionToken = issueReaderSession(reader);
   res.status(201).json({
     actionToken,
+    sessionToken,
     readerId: reader.id,
     handle: reader.handle,
     displayName: reader.display_name,

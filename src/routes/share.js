@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { getScriptById, createSignedPdfUrl } from '../services/supabaseService.js';
+import { optionalReader } from '../middleware/optionalReader.js';
+import { isCuratorHandle } from '../services/xpService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -9,7 +11,7 @@ const router = Router();
 // PII (submitter name/email) and internal fields; returns only what a recipient
 // needs to evaluate the recommendation, plus a fresh short-lived signed URL so
 // they can read the script. Any evaluated script is shareable by its link.
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', optionalReader, async (req, res, next) => {
   try {
     let row;
     try {
@@ -28,22 +30,27 @@ router.get('/:id', async (req, res, next) => {
       try { pdfUrl = await createSignedPdfUrl(row.storage_path, 3600); } catch { /* non-fatal */ }
     }
 
+    const canSeeEval = await isCuratorHandle(req.reader?.handle);
     res.set('Cache-Control', 'private, max-age=60');
     res.json({
       title: row.title,
       pageCount: row.page_count ?? null,
       genre: ev.genre ?? null,
-      budget: ev.budget ?? (ev.max_budget != null ? `$${Number(ev.max_budget).toLocaleString()}` : null),
-      decision: ev.decision ?? null,
-      logline: ev.logline ?? null,
-      readVerified: ev.read_verified ?? null,
-      // BARAKA evaluation (craft_score + championability_rating). Legacy fields
-      // included defensively for any not-yet-converted row.
-      evaluation: ev.evaluation ?? null,
-      scores: ev.scores ?? null,
-      weightedScore: ev.weighted_score ?? null,
-      comparableFilms: ev.comparable_films ?? null,
+      logline: ev.logline ?? null, // spoiler-free hook — helps a recipient decide to READ; not a verdict
       pdfUrl,
+      // The AI verdict is Curator-only. A recommend recipient (a Reader) never sees
+      // the decision/score/coverage — they read it first, unbiased.
+      ...(canSeeEval ? {
+        budget: ev.budget ?? (ev.max_budget != null ? `$${Number(ev.max_budget).toLocaleString()}` : null),
+        decision: ev.decision ?? null,
+        readVerified: ev.read_verified ?? null,
+        // BARAKA evaluation (craft_score + championability_rating). Legacy fields
+        // included defensively for any not-yet-converted row.
+        evaluation: ev.evaluation ?? null,
+        scores: ev.scores ?? null,
+        weightedScore: ev.weighted_score ?? null,
+        comparableFilms: ev.comparable_films ?? null,
+      } : {}),
     });
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));

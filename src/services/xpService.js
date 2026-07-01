@@ -25,6 +25,7 @@ import {
   getScriptTitles,
 } from './supabaseService.js';
 import { getReaderByHandle } from './readerService.js';
+import { env } from '../config/env.js';
 
 // Shape one reader's scored XP for the API.
 function shapeReader(stats, reader) {
@@ -105,6 +106,16 @@ export async function getReaderXp(handle) {
   const featuredScriptId = resolveFeaturedScriptId(scripts);
   const statsByReader = aggregateReaderStats({ readers: [reader], events, champions, feedback, scripts, featuredScriptId });
   return shapeReader(statsByReader[reader.id], reader);
+}
+
+// Is this reader handle a Curator (may see AI evals / curate)? Admin-allowlisted
+// handles always qualify; otherwise the reader must have reached the Curator XP
+// threshold. A missing/unknown handle is false — anonymous callers never see evals.
+export async function isCuratorHandle(handle) {
+  if (!handle) return false;
+  if (env.adminHandles.has(String(handle).toLowerCase())) return true;
+  const xp = await getReaderXp(handle).catch(() => null);
+  return !!(xp && xp.totalXp >= env.curatorMinXp);
 }
 
 // Every reader's XP, ranked. Powers the leaderboard + the dashboard. Mirrors the

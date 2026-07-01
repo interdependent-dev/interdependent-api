@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { optionalReader } from '../middleware/optionalReader.js';
+import { isCuratorHandle } from '../services/xpService.js';
 import {
   listScripts,
   getScriptById,
@@ -15,8 +17,18 @@ import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
 
-// All script routes require authentication
-router.use(requireAuth);
+// All script routes require the portal passcode. optionalReader ALSO attaches the
+// caller's reader identity (if a reader session token is present) so we can gate
+// the AI evaluation: regular Readers NEVER receive evaluation_json/evaluation_result
+// — only Curators (earned XP tier) and admins do. Read-first, server-enforced.
+router.use(requireAuth, optionalReader);
+
+// Remove the AI evaluation from a script row for non-Curator callers.
+function stripEval(script) {
+  if (!script) return script;
+  const { evaluation_json, evaluation_result, ...rest } = script;
+  return rest;
+}
 
 // GET /scripts?limit=50&offset=0
 router.get('/', async (req, res, next) => {
@@ -25,7 +37,8 @@ router.get('/', async (req, res, next) => {
 
   try {
     const scripts = await listScripts({ limit, offset });
-    res.json({ data: scripts, limit, offset });
+    const canSeeEval = await isCuratorHandle(req.reader?.handle);
+    res.json({ data: canSeeEval ? scripts : scripts.map(stripEval), limit, offset });
   } catch (err) {
     next(new AppError(err.message, 500));
   }
@@ -36,7 +49,8 @@ router.get('/:id', async (req, res, next) => {
   try {
     const script = await getScriptById(req.params.id);
     if (!script) return next(new AppError('Script not found', 404));
-    res.json(script);
+    const canSeeEval = await isCuratorHandle(req.reader?.handle);
+    res.json(canSeeEval ? script : stripEval(script));
   } catch (err) {
     next(new AppError(err.message, 500));
   }

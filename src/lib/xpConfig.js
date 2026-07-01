@@ -37,6 +37,7 @@ export const ACTIONS = {
   recommendLanded: 30, // …and that person actually finished the read
   recommendToChampion: 20, // a script you recommended later got championed
   earlySpot: 40, // you championed a script before the crowd did
+  earlyOpinionSpot: 40, // you left the FIRST human opinion on a script you FINISHED, and the crowd followed
 
   // NEW signals — wired now, dormant until the writer & investor surfaces ship.
   writerLike: 10, // a writer endorsed your feedback on their script
@@ -213,6 +214,7 @@ export function scoreReader(stats = {}) {
     feedbacks: num(stats.feedbacks),
     champions: num(stats.champions),
     earlySpots: num(stats.earlySpots),
+    earlyOpinions: num(stats.earlyOpinions),
     recsSent: num(stats.recsSent),
     recsOpened: num(stats.recsOpened),
     recsLanded: num(stats.recsLanded),
@@ -231,6 +233,7 @@ export function scoreReader(stats = {}) {
     { action: 'recommendLanded', label: 'Recommends landed', count: s.recsLanded, xp: s.recsLanded * ACTIONS.recommendLanded },
     { action: 'recommendToChampion', label: 'Recommend → champion', count: s.recsConverted, xp: s.recsConverted * ACTIONS.recommendToChampion },
     { action: 'earlySpot', label: 'Early spots', count: s.earlySpots, xp: s.earlySpots * ACTIONS.earlySpot },
+    { action: 'earlyOpinionSpot', label: 'First opinions', count: s.earlyOpinions, xp: s.earlyOpinions * ACTIONS.earlyOpinionSpot },
     { action: 'writerLike', label: 'Writer likes', count: s.writerLikes, xp: s.writerLikes * ACTIONS.writerLike },
     { action: 'investorFollow', label: 'Investor follows', count: s.investorFollows, xp: s.investorFollows * ACTIONS.investorFollow },
   ];

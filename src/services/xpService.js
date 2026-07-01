@@ -53,6 +53,7 @@ function shapeReader(stats, reader) {
       feedbacks: stats.feedbacks,
       champions: stats.champions,
       earlySpots: stats.earlySpots,
+      earlyOpinions: stats.earlyOpinions,
       recsSent: stats.recsSent,
       recsOpened: stats.recsOpened,
       recsLanded: stats.recsLanded,

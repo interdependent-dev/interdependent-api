@@ -82,6 +82,14 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
     a.byScript[f.script_id] = Math.max(a.byScript[f.script_id] || 0, xp);
   });
 
+  // First-opinion detection: every reader's feedback timestamp per script, so we can
+  // tell who opined FIRST (and whether the crowd followed) for the earlyOpinionSpot reward.
+  const opinionsByScript = {};
+  (feedback || []).forEach((f) => {
+    if (!f.reader_id || !f.script_id) return;
+    (opinionsByScript[f.script_id] || (opinionsByScript[f.script_id] = [])).push({ reader_id: f.reader_id, created_at: f.created_at });
+  });
+
   const statsByReader = {};
   for (const r of readers || []) {
     const rd = readsByReader[r.id] || {};
@@ -98,6 +106,24 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       const earlier = all.filter((o) => o.added_at < c.added_at).length;
       const laterByOther = all.some((o) => o.reader_id !== r.id && o.added_at > c.added_at);
       return earlier < EARLY_CHAMPION_RANK && laterByOther;
+    }).length;
+
+    // First human opinion: you left the EARLIEST feedback on a script you actually
+    // FINISHED, and ≥1 other reader also opined (crowd-validated) — tied to real
+    // reading + scarcity so it can't be farmed by opining on everything.
+    const earlyOpinions = Object.entries(opinionsByScript).filter(([sid, ops]) => {
+      const mine = ops.filter((o) => o.reader_id === r.id && o.created_at);
+      if (!mine.length) return false;
+      const myEarliest = mine.reduce((m, o) => (o.created_at < m ? o.created_at : m), mine[0].created_at);
+      // Someone else was first if they have an earlier timestamp, OR an EQUAL timestamp
+      // with a smaller reader_id (a stable tie-break so an exact tie can't double-award).
+      // A missing created_at never counts as "first".
+      const beaten = ops.some((o) => o.reader_id !== r.id && o.created_at &&
+        (o.created_at < myEarliest || (o.created_at === myEarliest && o.reader_id < r.id)));
+      const crowd = ops.some((o) => o.reader_id !== r.id);
+      const fr = rd[sid];
+      const finished = fr && isFinishedRead(fr.depth, fr.seconds, pagesById[sid]);
+      return !beaten && crowd && finished;
     }).length;
 
     const myFb = fbByReader[r.id] || { byScript: {} };
@@ -148,6 +174,7 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       feedbackXp: fb.xp,
       champions: myChamps.length,
       earlySpots,
+      earlyOpinions,
       recsSent,
       recsOpened,
       recsLanded,

@@ -5,8 +5,9 @@ import { optionalReader } from '../middleware/optionalReader.js';
 import { isCuratorHandle } from '../services/xpService.js';
 import {
   getScriptById, insertFeedback, setFeedbackAudio, uploadFeedbackAudio, listFeedback,
-  createSignedPdfUrl, mergeScriptEvaluationJson,
+  createSignedPdfUrl, mergeScriptEvaluationJson, getReaderScriptRead, getScriptPageCount,
 } from '../services/supabaseService.js';
+import { isFinishedRead } from '../lib/readGate.js';
 import { recalibrateWithFeedback } from '../services/anthropicService.js';
 import { notifyReaderActivity } from '../services/xpEmailService.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -56,22 +57,43 @@ router.post('/:scriptId', requireActionToken, async (req, res, next) => {
 // AI-verdict-derived, so it is CURATOR-ONLY (read-first wall) — stripped for Readers.
 router.get('/:scriptId', requireAuth, optionalReader, async (req, res, next) => {
   try {
+    const scriptId = req.params.scriptId;
     const [fb, script, canSeeEval] = await Promise.all([
-      listFeedback(req.params.scriptId),
-      getScriptById(req.params.scriptId).catch(() => null),
+      listFeedback(scriptId),
+      getScriptById(scriptId).catch(() => null),
       isCuratorHandle(req.reader?.handle),
     ]);
-    const out = await Promise.all(fb.map(async (f) => ({
+    // Read-first: you see OTHER readers' opinions only AFTER your own finished read
+    // (or as a Curator) — the human verdicts can't bias you before you read either.
+    let canSeeOpinions = canSeeEval;
+    if (!canSeeOpinions && req.reader?.id) {
+      try {
+        const [{ depth, seconds }, pages] = await Promise.all([
+          getReaderScriptRead(req.reader.id, scriptId),
+          getScriptPageCount(scriptId),
+        ]);
+        canSeeOpinions = isFinishedRead(depth, seconds, pages);
+      } catch { canSeeOpinions = false; } // read-status hiccup → withhold (fail-safe), never 500 the endpoint
+    }
+    const out = canSeeOpinions ? await Promise.all(fb.map(async (f) => ({
       id: f.id,
       reader: f.readers?.display_name || f.readers?.handle || 'A reader',
+      handle: f.readers?.handle || null, // for "who agreed/disagreed" discovery
       createdAt: f.created_at,
       championVerdict: f.champion_verdict,
       dimensions: f.dimensions,
       text: f.text,
       transcript: f.transcript,
       audioUrl: f.audio_path ? await createSignedPdfUrl(f.audio_path, 3600).catch(() => null) : null,
-    })));
-    res.json({ feedback: out, calibration: canSeeEval ? (script?.evaluation_json?.calibration ?? null) : null });
+    }))) : [];
+    // The COUNT is safe to show pre-read (it signals "there's a conversation here"
+    // without revealing any verdict) — it encourages the read.
+    res.json({
+      feedback: out,
+      canSeeOpinions,
+      totalOpinions: fb.filter((f) => (f.champion_verdict || '').trim()).length, // verdict-bearing only (matches the panel)
+      calibration: canSeeEval ? (script?.evaluation_json?.calibration ?? null) : null,
+    });
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 

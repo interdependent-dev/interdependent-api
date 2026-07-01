@@ -25,6 +25,7 @@ import {
   getScriptTitles,
 } from './supabaseService.js';
 import { getReaderByHandle } from './readerService.js';
+import { getChatSignals } from './chatService.js';
 import { env } from '../config/env.js';
 
 // Shape one reader's scored XP for the API.
@@ -54,6 +55,8 @@ function shapeReader(stats, reader) {
       champions: stats.champions,
       earlySpots: stats.earlySpots,
       earlyOpinions: stats.earlyOpinions,
+      chatEndorsed: stats.chatEndorsed,
+      chatSparked: stats.chatSparked,
       recsSent: stats.recsSent,
       recsOpened: stats.recsOpened,
       recsLanded: stats.recsLanded,
@@ -96,16 +99,17 @@ export async function getReaderXp(handle) {
   if (!reader) return null;
 
   const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
-  const [events, champions, feedback, scripts] = await Promise.all([
+  const [events, champions, feedback, scripts, chat] = await Promise.all([
     listReadEvents({ sinceISO }),
     getChampions(),
     getFeedbackForXp(),
     getScriptTitles(),
+    getChatSignals(),
   ]);
   // We only need this reader's stats, but recommend-funnel attribution needs the
   // full event set, so aggregate over a one-reader list.
   const featuredScriptId = resolveFeaturedScriptId(scripts);
-  const statsByReader = aggregateReaderStats({ readers: [reader], events, champions, feedback, scripts, featuredScriptId });
+  const statsByReader = aggregateReaderStats({ readers: [reader], events, champions, feedback, scripts, featuredScriptId, chat });
   return shapeReader(statsByReader[reader.id], reader);
 }
 
@@ -124,15 +128,16 @@ export async function isCuratorHandle(handle) {
 // can delegate here.
 export async function getAllReaderXp() {
   const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
-  const [readers, events, champions, feedback, scripts] = await Promise.all([
+  const [readers, events, champions, feedback, scripts, chat] = await Promise.all([
     getReaders(),
     listReadEvents({ sinceISO }),
     getChampions(),
     getFeedbackForXp(),
     getScriptTitles(),
+    getChatSignals(),
   ]);
   const featuredScriptId = resolveFeaturedScriptId(scripts);
-  const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId });
+  const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId, chat });
   const list = readers
     .map((r) => shapeReader(statsByReader[r.id], r))
     .filter((r) => r.totalXp > 0 || r.raw.verifiedReads > 0 || r.raw.champions > 0)
@@ -148,15 +153,15 @@ export async function getAllReaderXp() {
 // credited on each film and HOW MANY.
 export async function filmCreditContenders(scriptId) {
   const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
-  const [readers, events, champions, feedback, scripts] = await Promise.all([
-    getReaders(), listReadEvents({ sinceISO }), getChampions(), getFeedbackForXp(), getScriptTitles(),
+  const [readers, events, champions, feedback, scripts, chat] = await Promise.all([
+    getReaders(), listReadEvents({ sinceISO }), getChampions(), getFeedbackForXp(), getScriptTitles(), getChatSignals(),
   ]);
   const script = (scripts || []).find((s) => s.id === scriptId) || {};
   const pages = script.page_count;
   const featuredScriptId = resolveFeaturedScriptId(scripts);
 
   // global standing → who is ELIGIBLE for screen credit (reached the credit tier)
-  const allStats = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId });
+  const allStats = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId, chat });
   const standing = {};
   readers.forEach((r) => {
     const scored = scoreReader(allStats[r.id]);

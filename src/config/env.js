@@ -20,7 +20,9 @@ const envSchema = z.object({
   READER_SESSION_EXPIRY: z.string().default('30d'), // long-lived reader IDENTITY (read personalization only; NOT writes)
   CURATOR_MIN_XP: z.string().default('1724'),        // XP at/above which a reader is a Curator (sees AI evals, curates) — "the magic number"
   // Always-Curator/admin handles (staff). Baked default; overridable via the env var on Render.
-  ADMIN_HANDLES: z.string().default('christopher-amell,abhinav-vadhera,michael-lin'),
+  // Only include handles that are ALREADY registered (an unregistered admin handle is
+  // squattable → add michael-lin here AFTER he creates his account).
+  ADMIN_HANDLES: z.string().default('christopher-amell,abhinav-vadhera'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -20,8 +20,7 @@ export async function getLeaderboardByReaderId(readerId) {
         page_count,
         word_count,
         status,
-        submitted_at,
-        evaluation_json
+        submitted_at
       )
     `)
     .eq('reader_id', readerId)

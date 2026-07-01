@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireActionToken } from '../middleware/requireActionToken.js';
+import { optionalReader } from '../middleware/optionalReader.js';
+import { isCuratorHandle } from '../services/xpService.js';
 import {
   getScriptById, insertFeedback, setFeedbackAudio, uploadFeedbackAudio, listFeedback,
   createSignedPdfUrl, mergeScriptEvaluationJson,
@@ -50,12 +52,14 @@ router.post('/:scriptId', requireActionToken, async (req, res, next) => {
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 
-// List a script's feedback + any persisted calibration (gated — dashboard).
-router.get('/:scriptId', requireAuth, async (req, res, next) => {
+// List a script's feedback + any persisted calibration. `calibration` is
+// AI-verdict-derived, so it is CURATOR-ONLY (read-first wall) — stripped for Readers.
+router.get('/:scriptId', requireAuth, optionalReader, async (req, res, next) => {
   try {
-    const [fb, script] = await Promise.all([
+    const [fb, script, canSeeEval] = await Promise.all([
       listFeedback(req.params.scriptId),
       getScriptById(req.params.scriptId).catch(() => null),
+      isCuratorHandle(req.reader?.handle),
     ]);
     const out = await Promise.all(fb.map(async (f) => ({
       id: f.id,
@@ -67,14 +71,17 @@ router.get('/:scriptId', requireAuth, async (req, res, next) => {
       transcript: f.transcript,
       audioUrl: f.audio_path ? await createSignedPdfUrl(f.audio_path, 3600).catch(() => null) : null,
     })));
-    res.json({ feedback: out, calibration: script?.evaluation_json?.calibration ?? null });
+    res.json({ feedback: out, calibration: canSeeEval ? (script?.evaluation_json?.calibration ?? null) : null });
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 
-// Re-calibrate the AI evaluation against reader feedback (gated) — especially
-// Championability, where the readers are ground truth. Persists the calibration.
-router.post('/:scriptId/recalibrate', requireAuth, async (req, res, next) => {
+// Re-calibrate the AI evaluation against reader feedback — a CURATOR/admin action
+// (it exposes + persists the AI verdict and runs a live model call). Curator-gated.
+router.post('/:scriptId/recalibrate', requireAuth, optionalReader, async (req, res, next) => {
   try {
+    if (!(await isCuratorHandle(req.reader?.handle))) {
+      return next(new AppError('Curator access required', 403, 'curator_required'));
+    }
     const scriptId = req.params.scriptId;
     const script = await getScriptById(scriptId).catch(() => null);
     if (!script || !script.evaluation_json) return next(new AppError('Script has no evaluation', 404));

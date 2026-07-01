@@ -40,10 +40,6 @@ function shapeReader(stats, reader) {
     // Sourced from the role registry (still 'Reader' today) so the OA §16.3
     // roster is the single source of truth, not a bare string literal here.
     role: roleName('reader'),
-    // May this reader see AI evaluations + curate? (admin-allowlisted, or reached
-    // the Curator XP threshold). Drives the read-first "wall" client-side; the
-    // server enforces the SAME rule when stripping evals from /scripts and /share.
-    curator: env.adminHandles.has(String(reader.handle || '').toLowerCase()) || scored.totalXp >= env.curatorMinXp,
     totalXp: scored.totalXp,
     barMax: scored.barMax,
     level: scored.level,

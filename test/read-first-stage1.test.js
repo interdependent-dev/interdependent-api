@@ -83,6 +83,26 @@ test('isCuratorHandle: admin-allowlisted → true (case-insensitive); empty/null
   assert.equal(await isCuratorHandle(undefined), false);
 });
 
+// ── requireAuth rejects identity/action tokens replayed as the portal credential ─
+test('requireAuth: accepts the portal token only; rejects reader_session / action tokens', async () => {
+  const { requireAuth } = await import('../src/middleware/requireAuth.js');
+  function run(token) {
+    let status = null, nexted = false;
+    const req = { headers: token ? { authorization: 'Bearer ' + token } : {}, cookies: {} };
+    const res = { status: (c) => { status = c; return { json: () => {} }; } };
+    requireAuth(req, res, () => { nexted = true; });
+    return { status, nexted, req };
+  }
+  let r = run(jwt.sign({ authenticated: true }, SECRET));
+  assert.equal(r.nexted, true, 'portal token accepted');
+  assert.equal(r.req.auth.authenticated, true);
+  r = run(jwt.sign({ purpose: 'reader_session', readerId: 'x', handle: 'y' }, SECRET));
+  assert.equal(r.nexted, false); assert.equal(r.status, 401);
+  r = run(jwt.sign({ purpose: 'leaderboard_action', readerId: 'x', handle: 'y' }, SECRET));
+  assert.equal(r.nexted, false, 'action token rejected as portal credential'); assert.equal(r.status, 401);
+  assert.equal(run(null).status, 401);
+});
+
 // ── controller mints a session token at sign-in ──────────────────────────────
 test('readerController exports the sign-in handlers (sessionToken wired in responses)', async () => {
   const mod = await import('../src/controllers/readerController.js');

@@ -16,7 +16,15 @@ export function requireAuth(req, res, next) {
   }
 
   try {
-    req.auth = jwt.verify(token, env.jwtSecret);
+    const payload = jwt.verify(token, env.jwtSecret);
+    // The portal passcode token (authController mints `{ authenticated: true }`) is the
+    // ONLY credential for portal access. Reject reader identity/action tokens
+    // (reader_session / leaderboard_action) — signed with the same secret but carrying a
+    // `purpose` — if they're replayed here as Authorization to skip the passcode gate.
+    if (payload.authenticated !== true) {
+      return res.status(401).json({ error: 'Invalid or expired session — please re-enter the passcode' });
+    }
+    req.auth = payload;
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session — please re-enter the passcode' });

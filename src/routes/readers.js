@@ -170,7 +170,9 @@ router.get('/:handle/taste', optionalReader, async (req, res, next) => {
     const self = req.reader?.handle && req.reader.handle.toLowerCase() === String(handle).toLowerCase();
     const allowed = self || (await isCuratorHandle(req.reader?.handle));
     if (!allowed) return res.json({ matches: [], canSee: false });
-    res.json({ matches: await getTasteMatches(handle), canSee: true });
+    const matches = await getTasteMatches(handle);
+    res.set('Cache-Control', 'private, max-age=30');  // per-reader result — private cache only
+    res.json({ matches, canSee: true });
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 

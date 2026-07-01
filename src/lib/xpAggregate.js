@@ -52,7 +52,7 @@ function recsByNameFromEvents(events) {
 // featuredScriptId (The Carrier) gates the event perk: featuredRead/featuredFeedback
 // reflect activity on that specific script. If it's null/unknown, they fall back to
 // "any read / any feedback" so the perk is never permanently unreachable.
-export function aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId = null }) {
+export function aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId = null, chat = { messages: [], endorsements: [] } }) {
   const pagesById = {};
   (scripts || []).forEach((s) => { pagesById[s.id] = s.page_count; });
 
@@ -88,6 +88,27 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
   (feedback || []).forEach((f) => {
     if (!f.reader_id || !f.script_id) return;
     (opinionsByScript[f.script_id] || (opinionsByScript[f.script_id] = [])).push({ reader_id: f.reader_id, created_at: f.created_at });
+  });
+
+  // Chat signals (Stage 4). Peer XP: endorsements you RECEIVED from OTHER champions,
+  // and your messages that SPARKED a reply from someone else. Empty until the chat
+  // tables are migrated (chatService.getChatSignals fails open).
+  // Distinct-PEOPLE based, so it rewards genuine reach and resists 2-reader collusion
+  // (each colluder caps at 1, no matter how many messages they cross-endorse/reply to):
+  // DISTINCT endorsers who endorsed any of your messages; DISTINCT other readers who
+  // replied to any of your messages.
+  const msgAuthor = {};
+  (chat.messages || []).forEach((m) => { msgAuthor[m.id] = m.reader_id; });
+  const endorsersByAuthor = {};
+  (chat.endorsements || []).forEach((e) => {
+    const author = msgAuthor[e.message_id];
+    if (author && author !== e.endorser_id) (endorsersByAuthor[author] || (endorsersByAuthor[author] = new Set())).add(e.endorser_id);
+  });
+  const repliersByAuthor = {};
+  (chat.messages || []).forEach((m) => {
+    if (!m.parent_id) return;
+    const parentAuthor = msgAuthor[m.parent_id];
+    if (parentAuthor && parentAuthor !== m.reader_id) (repliersByAuthor[parentAuthor] || (repliersByAuthor[parentAuthor] = new Set())).add(m.reader_id);
   });
 
   const statsByReader = {};
@@ -175,6 +196,8 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       champions: myChamps.length,
       earlySpots,
       earlyOpinions,
+      chatEndorsed: endorsersByAuthor[r.id] ? endorsersByAuthor[r.id].size : 0,
+      chatSparked: repliersByAuthor[r.id] ? repliersByAuthor[r.id].size : 0,
       recsSent,
       recsOpened,
       recsLanded,

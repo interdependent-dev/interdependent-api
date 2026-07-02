@@ -19,9 +19,9 @@ import { getReaderByHandle } from '../services/readerService.js';
 import { getScriptById } from '../services/supabaseService.js';
 import { createAssignment, listAssignments, deleteAssignment } from '../services/assignmentService.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { UUID } from '../lib/ids.js';
 
 const router = Router();
-const UUID = /^[0-9a-fA-F-]{36}$/;
 
 // Staff = the caller's PROVEN handle is on the admin allowlist. req.reader must
 // have been attached by requireActionToken (writes) or optionalReader (reads).

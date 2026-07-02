@@ -10,12 +10,13 @@
 // reader attribution. `recommender` stays a body field on purpose: it is
 // display-name attribution only, and is anti-gamed separately in the XP layer.
 
+import { UUID } from './ids.js';
+
 export const EVENT_TYPES = new Set([
   'recommend_open', 'script_view', 'reader_open', 'quick_preview',
   'read_progress', 'read_complete', 'new_tab', 'download', 'champion', 'browse_unlock',
 ]);
 
-const UUID = /^[0-9a-fA-F-]{36}$/;
 const num = (x, lo, hi) => (Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : null);
 // Free-text from the PUBLIC ingest — strip control chars so it's clean at rest,
 // independent of whether every future render sink remembers to HTML-escape it.

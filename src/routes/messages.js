@@ -6,9 +6,9 @@ import { isCuratorHandle } from '../services/xpService.js';
 import { getScriptMessages, insertMessage, endorseMessage, getMessageMeta } from '../services/chatService.js';
 import { getLeaderboardEntry } from '../services/leaderboardService.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { UUID } from '../lib/ids.js';
 
 const router = Router();
-const UUID = /^[0-9a-fA-F-]{36}$/;
 
 // The chat is the WARM AUDIENCE: readers who CHAMPIONED the script, plus top-XP
 // Curators (who may join any). Fails safe (false) on any error.

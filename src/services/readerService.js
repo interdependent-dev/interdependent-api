@@ -1,9 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { env } from '../config/env.js';
-
-const supabase = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
-  auth: { persistSession: false },
-});
+import { supabase } from './supabaseClient.js';
 
 // ─── Readers ────────────────────────────────────────────────────────────────
 

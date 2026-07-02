@@ -12,9 +12,9 @@ import { recalibrateWithFeedback } from '../services/anthropicService.js';
 import { notifyReaderActivity } from '../services/xpEmailService.js';
 import { markAssignmentDecided } from '../services/assignmentService.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { UUID } from '../lib/ids.js';
 
 const router = Router();
-const UUID = /^[0-9a-fA-F-]{36}$/;
 
 // Reader submits feedback — authenticated by a passkey action token (same as
 // Champion). Body may carry a base64 voice note (this router is mounted with a

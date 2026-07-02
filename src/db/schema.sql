@@ -151,6 +151,25 @@ CREATE TABLE IF NOT EXISTS reader_feedback (
 );
 CREATE INDEX IF NOT EXISTS reader_feedback_script_idx ON reader_feedback(script_id);
 
+-- Assigned reads: staff (ADMIN_HANDLES) assign a specific script to a specific
+-- reader. "Decided" = the reader submitted feedback on it (decided_at stamped by
+-- the feedback path; self-healed on read). The "decide before reading on" gate
+-- is CLIENT-side; the API only reports state. (migrations/2026-07-02_assignments.sql)
+CREATE TABLE IF NOT EXISTS reader_assignments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reader_id UUID NOT NULL REFERENCES readers(id) ON DELETE CASCADE,
+  script_id UUID NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
+  assigned_by TEXT NOT NULL,
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  decided_at TIMESTAMPTZ,
+  UNIQUE (reader_id, script_id)
+);
+CREATE INDEX IF NOT EXISTS reader_assignments_reader_pending_idx
+    ON reader_assignments(reader_id) WHERE decided_at IS NULL;
+CREATE INDEX IF NOT EXISTS reader_assignments_script_idx
+    ON reader_assignments(script_id);
+
 -- Idempotency log for reader XP emails (first-of-kind thank-yous + perk unlocks).
 -- The UNIQUE constraint guarantees each note is sent at most once per reader.
 CREATE TABLE IF NOT EXISTS reader_notifications (

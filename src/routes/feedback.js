@@ -10,6 +10,7 @@ import {
 import { isFinishedRead } from '../lib/readGate.js';
 import { recalibrateWithFeedback } from '../services/anthropicService.js';
 import { notifyReaderActivity } from '../services/xpEmailService.js';
+import { markAssignmentDecided } from '../services/assignmentService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -50,6 +51,10 @@ router.post('/:scriptId', requireActionToken, async (req, res, next) => {
     // fire-and-forget: a first-review thank-you + any newly-unlocked perk emails.
     // Never blocks or fails the response.
     notifyReaderActivity({ readerId: req.reader.id, handle: req.reader.handle, kind: 'feedback', scriptTitle: script.title });
+    // fire-and-forget: feedback on an ASSIGNED script decides the assignment.
+    // Non-fatal — the reader's inbox self-heals on read if this write misses.
+    markAssignmentDecided({ readerId: req.reader.id, scriptId })
+      .catch((e) => console.error('assignment auto-complete failed:', e.message));
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 

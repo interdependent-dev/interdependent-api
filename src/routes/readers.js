@@ -22,6 +22,7 @@ import { publicPhotoUrl } from '../services/readerService.js';
 import { readingPct, isFinishedRead } from '../lib/readGate.js';
 import { getReaderXp, getAllReaderXp, fetchXpRows, isCuratorHandle } from '../services/xpService.js';
 import { getTasteMatches } from '../services/discoveryService.js';
+import { getReaderAssignments } from '../services/assignmentService.js';
 import { optionalReader } from '../middleware/optionalReader.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { env } from '../config/env.js';
@@ -173,6 +174,41 @@ router.get('/list', requireAuth, async (req, res, next) => {
       .sort((a, b) => b.totalXp - a.totalXp || b.recsLanded - a.recsLanded || b.finished - a.finished);
 
     res.json({ readers: list });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+});
+
+// The signed-in reader's own ASSIGNED READS. Identity comes from the reader
+// SESSION token (X-Reader-Session via optionalReader) — same resolution as the
+// taste endpoint — so a reader can only ever see their OWN assignments.
+// "Decided" self-heals: an assignment whose script already has this reader's
+// feedback is reported decided even if the stamp was missed.
+// NOTE: the "decide before reading on" gate is CLIENT-side (soft gate, like the
+// finished-read gate) — this endpoint only reports state.
+router.get('/me/assignments', optionalReader, async (req, res, next) => {
+  try {
+    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    const { pending, decided } = await getReaderAssignments(req.reader.id);
+    res.set('Cache-Control', 'private, max-age=15');
+    res.json({ pending, decided });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+});
+
+// The signed-in reader's INBOX — everything waiting on them, as a tagged union
+// ({ kind: 'assignment' | 'recommendation', ... }). Today it carries pending
+// assignments ONLY: the legacy `recommendations` table is not written by any
+// current flow (recommendation attribution lives in read_events.recommender),
+// so there are no peer-recommendation rows to merge. The shape is future-proof
+// for when peer recs get a real write path.
+router.get('/me/inbox', optionalReader, async (req, res, next) => {
+  try {
+    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    const { pending } = await getReaderAssignments(req.reader.id);
+    res.set('Cache-Control', 'private, max-age=15');
+    res.json({ items: pending.map((a) => ({ kind: 'assignment', ...a })) });
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

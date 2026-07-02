@@ -16,6 +16,7 @@ import leaderboardRouter from './routes/leaderboard.js';
 import feedbackRouter from './routes/feedback.js';
 import messagesRouter from './routes/messages.js';
 import xpRouter from './routes/xp.js';
+import assignmentsRouter from './routes/assignments.js';
 
 const app = express();
 
@@ -72,6 +73,7 @@ app.use('/readers', readersRouter);
 app.use('/leaderboard', leaderboardRouter);
 app.use('/messages', messagesRouter); // per-script chat — champions of the script (or Curators)
 app.use('/xp', xpRouter); // reader XP economy: public /xp/config + gated /xp/leaderboard
+app.use('/assignments', assignmentsRouter); // assigned reads — staff-only; readers see their own via /readers/me/*
 
 // 404 handler
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

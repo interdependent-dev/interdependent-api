@@ -32,7 +32,7 @@ export const ACTIONS = {
   feedbackNotes: 10,
   feedbackVoice: 15, // a recorded voice note (with transcript)
 
-  champion: 20, // adding a script to your board — post-decision conviction
+  champion: 20, // adding a script to your board — post-decision conviction (read-gated: counts only with a verified finished read of that script)
   recommendOpened: 5, // your share link was opened by someone
   recommendLanded: 30, // …and that person actually finished the read
   recommendToChampion: 20, // a script you recommended later got championed

@@ -18,13 +18,14 @@ import {
 } from '../controllers/readerController.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireActionToken } from '../middleware/requireActionToken.js';
-import { getReaders, listReadEvents, getScriptTitles, getAllFeedback } from '../services/supabaseService.js';
 import { publicPhotoUrl } from '../services/readerService.js';
 import { readingPct, isFinishedRead } from '../lib/readGate.js';
-import { getReaderXp, isCuratorHandle } from '../services/xpService.js';
+import { getReaderXp, getAllReaderXp, fetchXpRows, isCuratorHandle } from '../services/xpService.js';
 import { getTasteMatches } from '../services/discoveryService.js';
+import { getReaderAssignments } from '../services/assignmentService.js';
 import { optionalReader } from '../middleware/optionalReader.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { env } from '../config/env.js';
 
 const router = Router();
 
@@ -81,16 +82,39 @@ router.post('/photo', requireActionToken, photoUpload, uploadPhoto);
 // The TOP READERS list — readers who've genuinely finished at least MIN_FINISHED
 // screenplays, with what they've read (honest read % = depth AND time) and the
 // feedback they've left. Visible to all portal users (same passcode gate).
+// ORDERED BY THE XP RUBRIC: the list order IS the XP ranking (totalXp desc), so
+// this page can never disagree with /xp/leaderboard — one rubric, one order.
 // NOTE: must be declared BEFORE '/:handle' or it would match handle === 'list'.
 const MIN_FINISHED = 1; // a reader earns a spot once they finish a real read. Tunable.
 
 router.get('/list', requireAuth, async (req, res, next) => {
   try {
-    const [readers, events, titles, feedback] = await Promise.all([
-      getReaders(), listReadEvents(), getScriptTitles(), getAllFeedback(),
-    ]);
+    // ONE fetch powers both the XP ranking and the reads/feedback detail. The
+    // rows use the XP engine's 365-day event window (fetchXpRows), so the
+    // numbers shown here are exactly the ones the ranking was computed from.
+    const rows = await fetchXpRows();
+    const { readers, events, champions, feedback, scripts } = rows;
+    const xpList = await getAllReaderXp(rows);
+    const xpByReaderId = {};
+    xpList.forEach((x) => { xpByReaderId[x.readerId] = x; });
+
     const titleById = {}, pagesById = {};
-    titles.forEach((t) => { titleById[t.id] = t.title; pagesById[t.id] = t.page_count; });
+    scripts.forEach((t) => { titleById[t.id] = t.title; pagesById[t.id] = t.page_count; });
+
+    // (reader, script) pairs the reader has championed — raw board-adds, so the
+    // flag mirrors what the reader actually did (XP separately read-gates them).
+    const champSet = new Set(champions.map((c) => `${c.reader_id}::${c.script_id}`));
+    // (recommender-handle, script) pairs — this reader SENT a recommendation of
+    // the script. Attributed exactly like the XP aggregator: the share link
+    // carries ?by=<handle> into read_events.recommender (case-insensitive). The
+    // legacy `recommendations` table is not written by any current flow, so
+    // read_events is the single source here.
+    const recSet = new Set();
+    for (const e of events) {
+      if (e.recommender && e.script_id) {
+        recSet.add(`${String(e.recommender).toLowerCase()}::${e.script_id}`);
+      }
+    }
 
     // reader_id -> script_id -> { furthest depth, longest active time, last seen }
     const byReader = {};
@@ -103,7 +127,8 @@ router.get('/list', requireAuth, async (req, res, next) => {
       if (e.ts > sc.last) sc.last = e.ts;
     }
 
-    // reader_id -> feedback they've left
+    // reader_id -> feedback they've left (rows come from the XP fetch — a
+    // superset of the fields this display needs)
     const fbByReader = {};
     for (const f of feedback) {
       if (!f.reader_id) continue;
@@ -118,6 +143,7 @@ router.get('/list', requireAuth, async (req, res, next) => {
 
     const list = readers.map((r) => {
       const rd = byReader[r.id] || {};
+      const handleLc = String(r.handle || '').toLowerCase();
       const reads = Object.entries(rd).map(([sid, v]) => ({
         id: sid,                                                // script id → clickable to its detail
         title: titleById[sid] || 'Untitled',
@@ -125,13 +151,19 @@ router.get('/list', requireAuth, async (req, res, next) => {
         pages: pagesById[sid] || null,                          // total pages → render "read / total"
         finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
         last: v.last,
+        championed: champSet.has(`${r.id}::${sid}`),           // on this reader's board
+        recommended: recSet.has(`${handleLc}::${sid}`),        // this reader shared it on
       })).sort((a, b) => (a.last < b.last ? 1 : -1));
       const fb = (fbByReader[r.id] || []).sort((a, b) => (a.when < b.when ? 1 : -1));
+      const xp = xpByReaderId[r.id];
       return {
         handle: r.handle,
         name: r.display_name || r.handle,
         photoUrl: publicPhotoUrl(r.photo_path),
         joinedAt: r.created_at || null,
+        staff: env.adminHandles.has(handleLc),   // team member (ADMIN_HANDLES)
+        totalXp: xp ? xp.totalXp : 0,            // the ordering key — no second call needed
+        recsLanded: xp ? xp.raw.recsLanded : 0,  // first tie-break (exposed for transparency)
         reads,
         scriptsRead: reads.length,
         finished: reads.filter((x) => x.finished).length,
@@ -139,9 +171,44 @@ router.get('/list', requireAuth, async (req, res, next) => {
       };
     })
       .filter((r) => r.finished >= MIN_FINISHED)   // only readers who've earned a spot
-      .sort((a, b) => b.finished - a.finished || b.scriptsRead - a.scriptsRead);
+      .sort((a, b) => b.totalXp - a.totalXp || b.recsLanded - a.recsLanded || b.finished - a.finished);
 
     res.json({ readers: list });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+});
+
+// The signed-in reader's own ASSIGNED READS. Identity comes from the reader
+// SESSION token (X-Reader-Session via optionalReader) — same resolution as the
+// taste endpoint — so a reader can only ever see their OWN assignments.
+// "Decided" self-heals: an assignment whose script already has this reader's
+// feedback is reported decided even if the stamp was missed.
+// NOTE: the "decide before reading on" gate is CLIENT-side (soft gate, like the
+// finished-read gate) — this endpoint only reports state.
+router.get('/me/assignments', optionalReader, async (req, res, next) => {
+  try {
+    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    const { pending, decided } = await getReaderAssignments(req.reader.id);
+    res.set('Cache-Control', 'private, max-age=15');
+    res.json({ pending, decided });
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+});
+
+// The signed-in reader's INBOX — everything waiting on them, as a tagged union
+// ({ kind: 'assignment' | 'recommendation', ... }). Today it carries pending
+// assignments ONLY: the legacy `recommendations` table is not written by any
+// current flow (recommendation attribution lives in read_events.recommender),
+// so there are no peer-recommendation rows to merge. The shape is future-proof
+// for when peer recs get a real write path.
+router.get('/me/inbox', optionalReader, async (req, res, next) => {
+  try {
+    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    const { pending } = await getReaderAssignments(req.reader.id);
+    res.set('Cache-Control', 'private, max-age=15');
+    res.json({ items: pending.map((a) => ({ kind: 'assignment', ...a })) });
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

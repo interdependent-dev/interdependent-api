@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getScriptById, createSignedPdfUrl } from '../services/supabaseService.js';
 import { optionalReader } from '../middleware/optionalReader.js';
 import { isCuratorHandle } from '../services/xpService.js';
+import { extractSynopsis } from '../lib/evalSynopsis.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -37,6 +38,10 @@ router.get('/:id', optionalReader, async (req, res, next) => {
       pageCount: row.page_count ?? null,
       genre: ev.genre ?? null,
       logline: ev.logline ?? null, // spoiler-free hook — helps a recipient decide to READ; not a verdict
+      // `synopsis` = the same spoiler-free logline under the uniform field name
+      // the portal uses on /scripts responses (defensively re-extracted so a
+      // fenced-string row still yields it).
+      synopsis: extractSynopsis(ev, row.evaluation_result),
       pdfUrl,
       // The AI verdict is Curator-only. A recommend recipient (a Reader) never sees
       // the decision/score/coverage — they read it first, unbiased.

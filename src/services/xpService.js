@@ -41,6 +41,9 @@ function shapeReader(stats, reader) {
     // Sourced from the role registry (still 'Reader' today) so the OA §16.3
     // roster is the single source of truth, not a bare string literal here.
     role: roleName('reader'),
+    // Staff (ADMIN_HANDLES) — lets clients label/segment the team without a
+    // second lookup. Derived from the stable handle, never the display name.
+    staff: env.adminHandles.has(String(reader.handle || '').toLowerCase()),
     totalXp: scored.totalXp,
     barMax: scored.barMax,
     level: scored.level,
@@ -52,7 +55,8 @@ function shapeReader(stats, reader) {
     raw: {
       verifiedReads: stats.verifiedReads,
       feedbacks: stats.feedbacks,
-      champions: stats.champions,
+      champions: stats.champions, // read-backed only (the XP signal)
+      championsAll: stats.championsAll, // raw board-adds incl. unread (display only)
       earlySpots: stats.earlySpots,
       earlyOpinions: stats.earlyOpinions,
       chatEndorsed: stats.chatEndorsed,
@@ -123,10 +127,12 @@ export async function isCuratorHandle(handle) {
   return !!(xp && xp.totalXp >= env.curatorMinXp);
 }
 
-// Every reader's XP, ranked. Powers the leaderboard + the dashboard. Mirrors the
-// legacy /analytics/readers response shape ({ readers, ... }) so that endpoint
-// can delegate here.
-export async function getAllReaderXp() {
+// Fetch the raw rows the XP engine aggregates, in ONE place. Events are
+// windowed to the last 365 days — the XP horizon. Callers that also need the
+// same rows for their own display (e.g. /readers/list) fetch here once and pass
+// the result straight into getAllReaderXp(rows), so ranking + detail always
+// come from a single consistent snapshot.
+export async function fetchXpRows() {
   const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
   const [readers, events, champions, feedback, scripts, chat] = await Promise.all([
     getReaders(),
@@ -136,11 +142,21 @@ export async function getAllReaderXp() {
     getScriptTitles(),
     getChatSignals(),
   ]);
+  return { readers, events, champions, feedback, scripts, chat };
+}
+
+// Every reader's XP, ranked. Powers the leaderboard + the dashboard. Mirrors the
+// legacy /analytics/readers response shape ({ readers, ... }) so that endpoint
+// can delegate here. Accepts optional `prefetched` rows (the fetchXpRows shape)
+// so a caller that already holds the rows doesn't fetch them twice.
+export async function getAllReaderXp(prefetched = null) {
+  const { readers, events, champions, feedback, scripts, chat } =
+    prefetched || (await fetchXpRows());
   const featuredScriptId = resolveFeaturedScriptId(scripts);
   const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId, chat });
   const list = readers
     .map((r) => shapeReader(statsByReader[r.id], r))
-    .filter((r) => r.totalXp > 0 || r.raw.verifiedReads > 0 || r.raw.champions > 0)
+    .filter((r) => r.totalXp > 0 || r.raw.verifiedReads > 0 || r.raw.championsAll > 0)
     .sort((a, b) => b.totalXp - a.totalXp || b.raw.recsLanded - a.raw.recsLanded);
   return list;
 }
@@ -201,6 +217,11 @@ export async function filmCreditContenders(scriptId) {
   const contrib = {};
   const ensure = (id) => (byId[id] ? (contrib[id] || (contrib[id] = { early: false, recLanded: false, champion: false, readFeedback: false })) : null);
   champs.forEach((c) => {
+    // Read-gated (same rule as the XP aggregator): a champion row on this film
+    // only sets the champion/early contribution flags when the champion has a
+    // VERIFIED FINISHED READ of the film.
+    const rv = reads[c.reader_id];
+    if (!(rv && isFinishedRead(rv.depth, rv.seconds, pages))) return;
     const x = ensure(c.reader_id); if (!x) return;
     x.champion = true;
     // early = among the first EARLY_CHAMPION_RANK to champion this film AND the crowd

@@ -4,13 +4,8 @@
 // this file is only the DB access.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createClient } from '@supabase/supabase-js';
-import { env } from '../config/env.js';
+import { supabase } from './supabaseClient.js';
 import { partitionAssignments, earliestFeedbackByScript, isDuplicateError } from '../lib/assignments.js';
-
-const supabase = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
-  auth: { persistSession: false },
-});
 
 // Create an assignment. Throws with `.duplicate = true` on the UNIQUE
 // (reader_id, script_id) violation so the route can answer 409.

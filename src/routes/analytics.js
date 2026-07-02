@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { listReadEvents, getScriptTitles, getReaders, getChampions } from '../services/supabaseService.js';
 import { getAllReaderXp } from '../services/xpService.js';
+import { isFinishedRead } from '../lib/readGate.js';
 import { publicConfig } from '../lib/xpConfig.js';
 import { AppError } from '../middleware/errorHandler.js';
 
@@ -11,14 +12,20 @@ router.use(requireAuth); // dashboard data is gated, same passcode as the portal
 const OPEN = new Set(['script_view', 'reader_open']);
 
 // A read is judged from DEPTH *and* TIME, never scroll alone — scrolling to the
-// bottom of a 100-page script in 30s is a skim, not a read. We require a
-// plausible pace (≥ ~6s per page actually reached) plus a real-time floor.
+// bottom of a 100-page script in 30s is a skim, not a read. Two tiers,
+// deliberately different:
+//   - `finished` — the CANONICAL read gate (lib/readGate.js: min(depth, timePct)
+//     ≥ 85 at PACE_SEC_PER_PAGE = 20s/page), the same rule XP, /reads/status and
+//     /readers/list apply, so dashboard finished-counts match the economy.
+//   - `engaged` — a deliberately SOFTER, dashboard-only interest tier (reached
+//     40%+ at a plausible ≥6s/page pace with ≥60s real time). It carries no
+//     economy weight and intentionally stays looser than the gate.
 function quality(depth, seconds, pages) {
   const d = depth || 0, s = seconds || 0;
   const reachedPages = Math.max(1, (pages || 100) * (d / 100));
   const secPerPage = s / reachedPages;
   const engaged = d >= 40 && s >= 60 && secPerPage >= 6;
-  const finished = d >= 90 && s >= 90 && secPerPage >= 6;
+  const finished = isFinishedRead(d, s, pages);
   return { engaged, finished, secPerPage: Math.round(secPerPage) };
 }
 // per (session,script): furthest depth + longest single active-read time

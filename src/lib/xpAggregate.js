@@ -7,6 +7,13 @@
 // reader_id (a signed-in reader was present) AND meet the canonical finish gate
 // (readingPct ≥ 85 — depth AND time). The spoofable anonymous POST /events
 // traffic earns nothing.
+//
+// READ-GATED CHAMPIONS: a champion row (reader_leaderboard) only counts toward
+// the `champions` stat — and is only eligible to be an `earlySpots` pick — when
+// that reader has a VERIFIED FINISHED READ of that script. Champion = "post-
+// decision conviction"; a board-add without the read is a raw, fakeable signal
+// and earns nothing. The unfiltered row count is still reported as
+// `championsAll` for display surfaces that show raw counts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { isFinishedRead } from './readGate.js';
@@ -114,14 +121,25 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
   const statsByReader = {};
   for (const r of readers || []) {
     const rd = readsByReader[r.id] || {};
-    const verifiedReads = Object.entries(rd).filter(([sid, v]) =>
-      isFinishedRead(v.depth, v.seconds, pagesById[sid])
-    ).length;
+    // Scripts this reader has VERIFIABLY finished (depth AND time) — backs both
+    // read XP and champion credibility.
+    const finishedScripts = new Set(
+      Object.entries(rd)
+        .filter(([sid, v]) => isFinishedRead(v.depth, v.seconds, pagesById[sid]))
+        .map(([sid]) => sid),
+    );
+    const verifiedReads = finishedScripts.size;
 
-    const myChamps = champByReader[r.id] || [];
+    const myChampsAll = champByReader[r.id] || [];
+    // Read-gated: only champion rows backed by a verified finished read of that
+    // script count toward `champions`/`earlySpots`. The raw row count survives
+    // as `championsAll` (display only — no XP, no gates).
+    const myChamps = myChampsAll.filter((c) => finishedScripts.has(c.script_id));
     // "Early" = among the FIRST few to champion a script (EARLY_CHAMPION_RANK) AND
     // the crowd later validated it (someone else championed after) — a scarce,
     // high-signal pick, not merely "any champion except the most recent one".
+    // (Rank/validation are judged against ALL champion rows of the script; only
+    // the reader's OWN champion must be read-backed.)
     const earlySpots = myChamps.filter((c) => {
       const all = champByScript[c.script_id] || [];
       const earlier = all.filter((o) => o.added_at < c.added_at).length;
@@ -142,9 +160,7 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       const beaten = ops.some((o) => o.reader_id !== r.id && o.created_at &&
         (o.created_at < myEarliest || (o.created_at === myEarliest && o.reader_id < r.id)));
       const crowd = ops.some((o) => o.reader_id !== r.id);
-      const fr = rd[sid];
-      const finished = fr && isFinishedRead(fr.depth, fr.seconds, pagesById[sid]);
-      return !beaten && crowd && finished;
+      return !beaten && crowd && finishedScripts.has(sid);
     }).length;
 
     const myFb = fbByReader[r.id] || { byScript: {} };
@@ -159,8 +175,7 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
     // on it? Falls back to "any read / any feedback" when no featured script is set.
     let featuredRead, featuredFeedback;
     if (featuredScriptId) {
-      const fr = rd[featuredScriptId];
-      featuredRead = fr && isFinishedRead(fr.depth, fr.seconds, pagesById[featuredScriptId]) ? 1 : 0;
+      featuredRead = finishedScripts.has(featuredScriptId) ? 1 : 0;
       featuredFeedback = fb.scripts.has(featuredScriptId) ? 1 : 0;
     } else {
       // Fail CLOSED: with no featured script resolved, the Carrier-gated event perk
@@ -193,7 +208,8 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
       verifiedReads,
       feedbacks: fb.count,
       feedbackXp: fb.xp,
-      champions: myChamps.length,
+      champions: myChamps.length, // read-backed only — the XP/gate signal
+      championsAll: myChampsAll.length, // raw row count (display only)
       earlySpots,
       earlyOpinions,
       chatEndorsed: endorsersByAuthor[r.id] ? endorsersByAuthor[r.id].size : 0,

@@ -141,14 +141,51 @@ test('feedback thoroughness aggregates per reader', () => {
   assert.strictEqual(stats.r1.feedbackXp, 19 + 40);
 });
 
-test('early spot = championed before another reader did', () => {
+test('early spot = championed before another reader did (with the read to back it)', () => {
+  // Champions are READ-GATED: r1's champion only counts because r1 also has a
+  // verified finished read of s1.
+  const events = [
+    { event_type: 'read_progress', reader_id: 'r1', script_id: 's1', depth_pct: 96, seconds: 4000 },
+  ];
   const champions = [
     { reader_id: 'r1', script_id: 's1', added_at: '2026-01-01T00:00:00Z' }, // first
     { reader_id: 'r2', script_id: 's1', added_at: '2026-02-01T00:00:00Z' }, // later → r1 was early
   ];
-  const stats = aggregateReaderStats({ readers: [READER], events: [], champions, feedback: [], scripts: SCRIPTS });
+  const stats = aggregateReaderStats({ readers: [READER], events, champions, feedback: [], scripts: SCRIPTS });
   assert.strictEqual(stats.r1.champions, 1);
   assert.strictEqual(stats.r1.earlySpots, 1);
+});
+
+test('champion WITHOUT a verified read earns no champion XP and no early spot — but shows in championsAll', () => {
+  // The farm pattern: board-adds with zero verified reads. No read ⇒ the champion
+  // row is display-only (championsAll) and worth 0 XP; it can't be an early spot.
+  const champions = [
+    { reader_id: 'r1', script_id: 's1', added_at: '2026-01-01T00:00:00Z' },
+    { reader_id: 'r2', script_id: 's1', added_at: '2026-02-01T00:00:00Z' }, // crowd followed — still no credit without the read
+  ];
+  const stats = aggregateReaderStats({ readers: [READER], events: [], champions, feedback: [], scripts: SCRIPTS });
+  assert.strictEqual(stats.r1.champions, 0);
+  assert.strictEqual(stats.r1.earlySpots, 0);
+  assert.strictEqual(stats.r1.championsAll, 1); // the raw row is still visible…
+  assert.strictEqual(scoreReader(stats.r1).totalXp, 0); // …but earns nothing
+});
+
+test('champion WITH a verified read earns exactly as before', () => {
+  const events = [
+    { event_type: 'read_progress', reader_id: 'r1', script_id: 's1', depth_pct: 96, seconds: 4000 },
+  ];
+  const champions = [
+    { reader_id: 'r1', script_id: 's1', added_at: '2026-01-01T00:00:00Z' },
+    { reader_id: 'r2', script_id: 's1', added_at: '2026-02-01T00:00:00Z' },
+  ];
+  const stats = aggregateReaderStats({ readers: [READER], events, champions, feedback: [], scripts: SCRIPTS });
+  assert.strictEqual(stats.r1.champions, 1);
+  assert.strictEqual(stats.r1.championsAll, 1);
+  assert.strictEqual(stats.r1.earlySpots, 1);
+  assert.strictEqual(
+    scoreReader(stats.r1).totalXp,
+    ACTIONS.read + ACTIONS.champion + ACTIONS.earlySpot,
+  );
 });
 
 test('recommend funnel: opened / landed / converted attributed by handle', () => {
@@ -208,10 +245,15 @@ test('forged-session burst on one script cannot farm recsLanded (deduped per scr
 test('early spot is scarce: only the first few champions, and only if the crowd follows', () => {
   const champers = [READER,
     { id: 'r2', handle: 'r2' }, { id: 'r3', handle: 'r3' }, { id: 'r4', handle: 'r4' }, { id: 'r5', handle: 'r5' }];
+  // Every champion here has a verified finished read of s1, so the ONLY thing
+  // separating them is the early-rank/crowd rule under test.
+  const events = champers.map((r) => (
+    { event_type: 'read_progress', reader_id: r.id, script_id: 's1', depth_pct: 96, seconds: 4000 }
+  ));
   // r1..r5 champion s1 in order; r1/r2/r3 are within the first 3 AND have later
   // champions → early. r4 (4th) is past the rank; r5 (last) has no one after → not early.
   const champions = champers.map((r, i) => ({ reader_id: r.id, script_id: 's1', added_at: `2026-0${i + 1}-01T00:00:00Z` }));
-  const stats = aggregateReaderStats({ readers: champers, events: [], champions, feedback: [], scripts: SCRIPTS });
+  const stats = aggregateReaderStats({ readers: champers, events, champions, feedback: [], scripts: SCRIPTS });
   assert.strictEqual(stats.r1.earlySpots, 1);
   assert.strictEqual(stats.r2.earlySpots, 1);
   assert.strictEqual(stats.r3.earlySpots, 1);

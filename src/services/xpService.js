@@ -52,7 +52,8 @@ function shapeReader(stats, reader) {
     raw: {
       verifiedReads: stats.verifiedReads,
       feedbacks: stats.feedbacks,
-      champions: stats.champions,
+      champions: stats.champions, // read-backed only (the XP signal)
+      championsAll: stats.championsAll, // raw board-adds incl. unread (display only)
       earlySpots: stats.earlySpots,
       earlyOpinions: stats.earlyOpinions,
       chatEndorsed: stats.chatEndorsed,
@@ -140,7 +141,7 @@ export async function getAllReaderXp() {
   const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId, chat });
   const list = readers
     .map((r) => shapeReader(statsByReader[r.id], r))
-    .filter((r) => r.totalXp > 0 || r.raw.verifiedReads > 0 || r.raw.champions > 0)
+    .filter((r) => r.totalXp > 0 || r.raw.verifiedReads > 0 || r.raw.championsAll > 0)
     .sort((a, b) => b.totalXp - a.totalXp || b.raw.recsLanded - a.raw.recsLanded);
   return list;
 }
@@ -201,6 +202,11 @@ export async function filmCreditContenders(scriptId) {
   const contrib = {};
   const ensure = (id) => (byId[id] ? (contrib[id] || (contrib[id] = { early: false, recLanded: false, champion: false, readFeedback: false })) : null);
   champs.forEach((c) => {
+    // Read-gated (same rule as the XP aggregator): a champion row on this film
+    // only sets the champion/early contribution flags when the champion has a
+    // VERIFIED FINISHED READ of the film.
+    const rv = reads[c.reader_id];
+    if (!(rv && isFinishedRead(rv.depth, rv.seconds, pages))) return;
     const x = ensure(c.reader_id); if (!x) return;
     x.champion = true;
     // early = among the first EARLY_CHAMPION_RANK to champion this film AND the crowd

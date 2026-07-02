@@ -14,6 +14,7 @@ import {
 import { extractText } from '../services/pdfService.js';
 import { runEvaluation } from '../controllers/evaluateController.js';
 import { generateLogline } from '../services/anthropicService.js';
+import { extractSynopsis, extractGenre } from '../lib/evalSynopsis.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -24,10 +25,25 @@ const router = Router();
 // — only Curators (earned XP tier) and admins do. Read-first, server-enforced.
 router.use(requireAuth, optionalReader);
 
-// Remove the AI evaluation from a script row for non-Curator callers.
+// Reader-safe fields projected onto every outgoing script row (ALL viewers,
+// Curators included, so the shape is uniform): `synopsis` = the spoiler-free
+// logline from the evaluation (never the spoiler-full summary, never
+// scores/decision/championability; null when absent) and `genre`.
+function withReaderSafeFields(script) {
+  if (!script) return script;
+  return {
+    ...script,
+    synopsis: extractSynopsis(script.evaluation_json, script.evaluation_result),
+    genre: extractGenre(script.evaluation_json, script.evaluation_result),
+  };
+}
+
+// Reader-safe projection for non-Curator callers: remove the AI evaluation
+// (read-first wall) AND the submitter PII — readers must never receive the
+// writer's name/email (submitter_* columns or the joined users row).
 function stripEval(script) {
   if (!script) return script;
-  const { evaluation_json, evaluation_result, ...rest } = script;
+  const { evaluation_json, evaluation_result, submitter_name, submitter_email, users, ...rest } = script;
   return rest;
 }
 
@@ -39,7 +55,8 @@ router.get('/', async (req, res, next) => {
   try {
     const canSeeEval = await isCuratorHandle(req.reader?.handle);
     // Read-first surfacing: Readers only see surfaced scripts; Curators see all (to curate).
-    const scripts = await listScripts({ limit, offset, surfacedOnly: !canSeeEval });
+    const scripts = (await listScripts({ limit, offset, surfacedOnly: !canSeeEval }))
+      .map(withReaderSafeFields);
     res.json({ data: canSeeEval ? scripts : scripts.map(stripEval), limit, offset });
   } catch (err) {
     next(new AppError(err.message, 500));
@@ -68,7 +85,8 @@ router.get('/:id', async (req, res, next) => {
     const script = await getScriptById(req.params.id);
     if (!script) return next(new AppError('Script not found', 404));
     const canSeeEval = await isCuratorHandle(req.reader?.handle);
-    res.json(canSeeEval ? script : stripEval(script));
+    const shaped = withReaderSafeFields(script);
+    res.json(canSeeEval ? shaped : stripEval(shaped));
   } catch (err) {
     next(new AppError(err.message, 500));
   }

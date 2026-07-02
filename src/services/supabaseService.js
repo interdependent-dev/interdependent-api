@@ -372,17 +372,21 @@ export async function markScriptProcessing({ id }) {
  * List all scripts with their submitting user's name and email.
  */
 export async function listScripts({ limit = 50, offset = 0, surfacedOnly = false } = {}) {
-  const base = () => supabase
+  const base = (orderCol) => supabase
     .from('scripts')
     .select('*, users(name, email)')
-    .order('submitted_at', { ascending: false })
+    .order(orderCol, { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
-  // Read-first surfacing: Readers only see scripts a Curator has surfaced.
-  let { data, error } = await (surfacedOnly ? base().eq('surfaced_to_readers', true) : base());
+  // Read-first surfacing: Readers only see scripts a Curator has surfaced —
+  // ordered by WHEN they were surfaced (newest curation first; scripts_surfaced_idx
+  // covers exactly this). Curators keep the full slate by submission date.
+  let { data, error } = await (surfacedOnly
+    ? base('surfaced_at').eq('surfaced_to_readers', true)
+    : base('submitted_at'));
   // Resilience: if the surfacing migration hasn't run yet, fail OPEN to the full
   // slate (pre-Stage-2 behavior) instead of 500-ing the portal.
-  if (error && surfacedOnly && /surfaced_to_readers/i.test(error.message || '')) {
-    ({ data, error } = await base());
+  if (error && surfacedOnly && /surfaced_to_readers|surfaced_at/i.test(error.message || '')) {
+    ({ data, error } = await base('submitted_at'));
   }
   if (error) throw new Error(`DB listScripts: ${error.message}`);
   return data;

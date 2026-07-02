@@ -41,6 +41,9 @@ function shapeReader(stats, reader) {
     // Sourced from the role registry (still 'Reader' today) so the OA §16.3
     // roster is the single source of truth, not a bare string literal here.
     role: roleName('reader'),
+    // Staff (ADMIN_HANDLES) — lets clients label/segment the team without a
+    // second lookup. Derived from the stable handle, never the display name.
+    staff: env.adminHandles.has(String(reader.handle || '').toLowerCase()),
     totalXp: scored.totalXp,
     barMax: scored.barMax,
     level: scored.level,
@@ -124,10 +127,12 @@ export async function isCuratorHandle(handle) {
   return !!(xp && xp.totalXp >= env.curatorMinXp);
 }
 
-// Every reader's XP, ranked. Powers the leaderboard + the dashboard. Mirrors the
-// legacy /analytics/readers response shape ({ readers, ... }) so that endpoint
-// can delegate here.
-export async function getAllReaderXp() {
+// Fetch the raw rows the XP engine aggregates, in ONE place. Events are
+// windowed to the last 365 days — the XP horizon. Callers that also need the
+// same rows for their own display (e.g. /readers/list) fetch here once and pass
+// the result straight into getAllReaderXp(rows), so ranking + detail always
+// come from a single consistent snapshot.
+export async function fetchXpRows() {
   const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
   const [readers, events, champions, feedback, scripts, chat] = await Promise.all([
     getReaders(),
@@ -137,6 +142,16 @@ export async function getAllReaderXp() {
     getScriptTitles(),
     getChatSignals(),
   ]);
+  return { readers, events, champions, feedback, scripts, chat };
+}
+
+// Every reader's XP, ranked. Powers the leaderboard + the dashboard. Mirrors the
+// legacy /analytics/readers response shape ({ readers, ... }) so that endpoint
+// can delegate here. Accepts optional `prefetched` rows (the fetchXpRows shape)
+// so a caller that already holds the rows doesn't fetch them twice.
+export async function getAllReaderXp(prefetched = null) {
+  const { readers, events, champions, feedback, scripts, chat } =
+    prefetched || (await fetchXpRows());
   const featuredScriptId = resolveFeaturedScriptId(scripts);
   const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId, chat });
   const list = readers

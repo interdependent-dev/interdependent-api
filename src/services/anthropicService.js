@@ -843,3 +843,107 @@ export async function pingModel(model) {
 }
 
 export { candidateModels };
+
+/* ════════════════════════════════════════════════════════════════════════
+ * THE MATLOCK DESK — plain-language counsel on ONE section of the OA
+ * ════════════════════════════════════════════════════════════════════════
+ *
+ * R120(i), owner (verbatim): *"a way to select the text or on any of the
+ * subsections ask in a box and get an AI repsonse we will have trained in
+ * Matlock (or my) voice to answer questions about the section if people have
+ * them."*
+ *
+ * ⚠ THE VOICE BELOW IS **v1-DRAFTED BY THE DESK, NOT TRAINED**. Nobody has been
+ * given Matlock's — or the owner's — actual register to calibrate against. The
+ * owner's/Matlock training material is OWNER-OWED, and until it lands this
+ * prompt is a house draft standing in for it. It is vetoable in one edit and it
+ * is the ONLY place the voice is specified. Nothing in the member-facing UI
+ * claims the voice is anyone's but the studio's.
+ *
+ * ⚠ AND THE GROUNDING IS STRUCTURAL, NOT PROMPTED. The route hands this function
+ * ONE section of the agreement, looked up by id, out of `lib/oaSections.js` — a
+ * generated corpus whose provenance chain runs back to the v1.9.0 markdown by
+ * sha. There is no retrieval, no second document, and no conversation history:
+ * a question about §3 cannot reach §22's text, because §22's text is not in the
+ * request. "Answers from the section only" is therefore a property of the wiring
+ * rather than an instruction the model may or may not follow.
+ */
+const MATLOCK_PROMPT = `You are MATLOCK, the studio's counsel desk at INTERDEPENDENT.
+
+A member is reading the INTERDEPENDENT Operating Agreement and has asked you about ONE section of it. That section's full text is given to you in the message. It is the only text you have and the only text you may answer from.
+
+WHO YOU ARE
+A seasoned studio counsel of the old school: courteous, unhurried, plain-spoken. You have read this agreement many times and you explain it the way you would across a desk — in ordinary words, without condescension, and without performing your own expertise. You are warm. You are brief. You do not do a bit, you do not tell jokes, and you never call the member "friend."
+
+WHAT YOU DO
+- Explain what the section SAYS, in plain terms.
+- CITE THE SUBSECTION you are relying on, by its number, every time — "3.13.6.1 says…", "under 8.2…". If more than one applies, cite each one.
+- If the member selected or quoted a passage, answer about THAT passage first.
+- Use the agreement's own defined terms — Member, Series, Contribution, Base Value, Production Interest, Minimum Participation Standard, Protected Provision — rather than paraphrases of them.
+- Answer in two to five short sentences. Long enough to be true, short enough to read.
+
+WHAT YOU NEVER DO
+- NEVER give legal advice. You do not say what anyone should do, whether to sign, whether a term is good or bad for them, what it is worth, or how a court would rule.
+- NEVER go beyond the text you were given. If the answer is not in this section, say so plainly — and if the text itself points elsewhere ("that is handled in Section 22"), name where it points and stop there.
+- NEVER invent a subsection number, a defined term, a dollar figure, a percentage, a deadline, or a cross-reference. If it is not in the text in front of you, it does not exist.
+- NEVER say what the agreement "probably means," "is intended to" mean, or "in practice" means.
+- NEVER discuss other companies' agreements, industry custom, or what is typical.
+- NEVER repeat the section back at length. They can already see it.
+
+WHEN THE QUESTION IS ABOUT THEM
+If the member is asking about their own position, rights, risk, taxes, or what they ought to do — say in one sentence, in your own words, that this is a question for their own lawyer, and stop. Do not give them most of an answer first and then the caveat.
+
+FORM
+Plain prose. No headings, no bullet lists, no markdown, no numbered steps. No opener — no "Certainly," no "Great question," no restating the question. Begin with the answer.`;
+
+/**
+ * Answer ONE question about ONE section, in the Matlock register.
+ *
+ * `section` is a record out of `lib/oaSections.js` — `{ id, mark, title, text,
+ * refs }`. `subsection` and `selection` are optional narrowings the member's own
+ * gesture produced. Returns `{ answer, model }`; throws an AppError on failure.
+ *
+ * The model ladder mirrors the house's: the pinned model first, then the two
+ * known-good fallbacks, so a dashboard drift or a model the key cannot reach
+ * degrades to a working answer rather than taking the desk down.
+ */
+export async function askCounsel({ section, subsection, selection, question }) {
+  const parts = [
+    `SECTION: ${section.title ?? section.id}`,
+    subsection ? `THE MEMBER IS ASKING ABOUT SUBSECTION: ${subsection}` : null,
+    selection ? `THE MEMBER SELECTED THIS PASSAGE:\n"""\n${String(selection).slice(0, 4000)}\n"""` : null,
+    `THE MEMBER'S QUESTION:\n${String(question).slice(0, 2000)}`,
+    `THE SECTION, IN FULL — THIS IS THE ONLY TEXT YOU MAY ANSWER FROM:\n"""\n${section.text}\n"""`,
+  ].filter(Boolean);
+
+  const models = candidateModels();
+  let lastErr;
+  for (const model of models) {
+    try {
+      const resp = await anthropic.messages.create(
+        {
+          model,
+          max_tokens: 700,
+          system: [{ type: 'text', text: MATLOCK_PROMPT, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: parts.join('\n\n') }],
+        },
+        { timeout: 90_000, maxRetries: 1 },
+      );
+      const answer = resp.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+        .trim();
+      if (answer) return { answer, model };
+      lastErr = new Error('empty answer');
+    } catch (err) {
+      const fatal = classifyFatal(err);
+      if (fatal) throw fatal;
+      lastErr = err;
+    }
+  }
+  throw new AppError(`The counsel desk could not answer — ${lastErr?.message || 'unknown'}`, 502);
+}
+
+/** The prompt itself, exported so a suite (or the owner) can read the register. */
+export { MATLOCK_PROMPT };

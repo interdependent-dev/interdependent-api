@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { optionalReader } from '../middleware/optionalReader.js';
@@ -121,10 +122,43 @@ router.get('/:id/pdf-url', async (req, res, next) => {
   }
 });
 
+// Retry and logline both re-read the full PDF through a paid Claude call, so the
+// pair shares ONE per-user budget: 10 requests per 10 minutes, curators included
+// (bulk re-scoring after a rubric change is a paced script's job, not a button
+// mash). Keyed by reader identity when present — one abuser must not starve a
+// shared IP — falling back to the IPv6-safe IP key for callers with no reader
+// session. Counts 4xx too, deliberately: probing the curator gate spends budget.
+const reEvalLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.reader?.id ?? ipKeyGenerator(req.ip),
+  message: { error: 'Too many re-evaluation requests — try again in a few minutes' },
+});
+
+// Forced runs (`?force=…`) re-spend Claude money on submissions that already have
+// a result — a curator/staff action. The portal hides the buttons from Readers,
+// but this server-side check is the only enforcement. Each route passes its own
+// notion of "forced" so the gate covers exactly the branch that bypasses the
+// normal 409 guards. Identity comes from the reader session (optionalReader);
+// authority from isCuratorHandle (admin-allowlisted staff always qualify).
+const requireCuratorWhenForced = (isForced) => async (req, res, next) => {
+  try {
+    if (isForced(req) && !(await isCuratorHandle(req.reader?.handle))) {
+      return next(new AppError('Curator access required', 403, 'curator_required'));
+    }
+    next();
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
+};
+
 // POST /scripts/:id/retry        — re-run a failed/unscored evaluation from the stored PDF.
 // POST /scripts/:id/retry?force=1 — re-evaluate ANY submission (even a good one), e.g.
 //   after a rubric/prompt change. Covers outages and deliberate re-scoring.
-router.post('/:id/retry', async (req, res, next) => {
+//   Curator/staff-only (and rate-limited even for them).
+router.post('/:id/retry', reEvalLimiter, requireCuratorWhenForced((req) => req.query.force === '1'), async (req, res, next) => {
   try {
     const row = await getScriptById(req.params.id);
     if (!row) return next(new AppError('Script not found', 404));
@@ -165,7 +199,9 @@ router.post('/:id/retry', async (req, res, next) => {
 // POST /scripts/:id/logline — full-read pass that ADDS a spoiler-free logline
 // (verified against the ending) without re-scoring. Backfills loglines onto
 // already-scored submissions; existing scores/decision/summary are untouched.
-router.post('/:id/logline', async (req, res, next) => {
+// `?force=1` regenerates an existing logline — curator/staff-only, and the
+// endpoint shares the retry limiter's per-user budget either way.
+router.post('/:id/logline', reEvalLimiter, requireCuratorWhenForced((req) => Boolean(req.query.force)), async (req, res, next) => {
   try {
     const row = await getScriptById(req.params.id);
     if (!row) return next(new AppError('Script not found', 404));

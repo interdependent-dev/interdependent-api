@@ -1,8 +1,5 @@
 import { AppError } from '../../middleware/errorHandler.js';
-import {
-  createRegistrationOptions,
-  finishRegistration,
-} from '../../services/passkeyService.js';
+import { createRegistrationOptions, finishRegistration } from '../../services/passkeyService.js';
 import {
   getReaderById,
   getCredentialsByReaderId,
@@ -59,7 +56,8 @@ export async function addDeviceBegin(req, res, next) {
 
 export async function addDeviceComplete(req, res, next) {
   const parsed = addDeviceCompleteSchema.safeParse(req.body);
-  if (!parsed.success) return next(new AppError('challengeId (UUID) and credential are required', 400));
+  if (!parsed.success)
+    return next(new AppError('challengeId (UUID) and credential are required', 400));
 
   const { challengeId, credential } = parsed.data;
 
@@ -69,19 +67,24 @@ export async function addDeviceComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   // The challenge must belong to the reader who authenticated for this request.
   const ownerId = stored.metadata?.addDeviceReaderId ?? stored.reader_id;
   if (!ownerId || ownerId !== req.reader.id) {
-    return next(new AppError('Challenge does not belong to this reader', 403, 'challenge_mismatch'));
+    return next(
+      new AppError('Challenge does not belong to this reader', 403, 'challenge_mismatch'),
+    );
   }
 
   let regInfo;
   try {
     regInfo = await finishRegistration({ credential, expectedChallenge: stored.challenge });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'),
+    );
   }
 
   try {
@@ -96,7 +99,13 @@ export async function addDeviceComplete(req, res, next) {
     });
   } catch (err) {
     if (/duplicate|unique/i.test(err.message)) {
-      return next(new AppError('This passkey is already registered to the account', 409, 'already_registered'));
+      return next(
+        new AppError(
+          'This passkey is already registered to the account',
+          409,
+          'already_registered',
+        ),
+      );
     }
     return next(new AppError(`Could not store credential: ${err.message}`, 500));
   }

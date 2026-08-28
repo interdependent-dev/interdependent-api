@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 // Satisfy src/config/env.js (validates process.env and exits on failure).
 process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-dummy';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
+process.env.SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
 process.env.SUBMISSION_PASSCODE = process.env.SUBMISSION_PASSCODE || '0000';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dummy-jwt-secret-至少十六-chars';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_dummy';
@@ -55,7 +56,12 @@ test('roleRegistry: ROLES is the §16.3 roster and roleName resolves display nam
 
 test('xpService exports getFeaturedScriptId alongside the existing API', async () => {
   const svc = await import('../src/services/xpService.js');
-  for (const fn of ['getReaderXp', 'getAllReaderXp', 'filmCreditContenders', 'getFeaturedScriptId']) {
+  for (const fn of [
+    'getReaderXp',
+    'getAllReaderXp',
+    'filmCreditContenders',
+    'getFeaturedScriptId',
+  ]) {
     assert.equal(typeof svc[fn], 'function', `xpService.${fn} should be a function`);
   }
 });
@@ -79,7 +85,10 @@ test('xp route module mounts GET /config (+ existing gated routes)', async () =>
   const mod = await import('../src/routes/xp.js');
   const paths = mountedPaths(mod.default);
   for (const expected of ['GET /config', 'GET /leaderboard', 'GET /credits/:scriptId']) {
-    assert.ok(paths.includes(expected), `route ${expected} should be mounted (saw: ${paths.join(', ')})`);
+    assert.ok(
+      paths.includes(expected),
+      `route ${expected} should be mounted (saw: ${paths.join(', ')})`,
+    );
   }
 });
 
@@ -87,7 +96,10 @@ test('readers route module mounts GET /email next to POST /email', async () => {
   const mod = await import('../src/routes/readers.js');
   const paths = mountedPaths(mod.default);
   for (const expected of ['GET /email', 'POST /email']) {
-    assert.ok(paths.includes(expected), `route ${expected} should be mounted (saw: ${paths.join(', ')})`);
+    assert.ok(
+      paths.includes(expected),
+      `route ${expected} should be mounted (saw: ${paths.join(', ')})`,
+    );
   }
   // GET /email must be declared BEFORE the catch-all GET /:handle so 'email'
   // isn't swallowed as a reader handle.

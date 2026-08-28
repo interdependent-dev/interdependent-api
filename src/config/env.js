@@ -10,17 +10,21 @@ export const envSchema = z.object({
   SUBMISSION_PASSCODE: z.string().length(4, 'SUBMISSION_PASSCODE must be exactly 4 characters'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRY: z.string().default('86400'),
-  CORS_ORIGINS: z.string().default('https://www.interdependent.studio,https://interdependent.studio'),
+  CORS_ORIGINS: z
+    .string()
+    .default('https://www.interdependent.studio,https://interdependent.studio'),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
-  EMAIL_FROM: z.string().email('EMAIL_FROM must be a valid email (e.g. noreply@interdependent.studio)'),
+  EMAIL_FROM: z
+    .string()
+    .email('EMAIL_FROM must be a valid email (e.g. noreply@interdependent.studio)'),
   ADMIN_EMAIL: z.string().email('ADMIN_EMAIL must be a valid email').optional(),
   // Passkey / WebAuthn
   RP_ID: z.string().default('interdependent.studio'),
   RP_NAME: z.string().default('Interdependent Studio'),
-  ACTION_TOKEN_EXPIRY: z.string().default('300'),  // seconds; 5 min default
+  ACTION_TOKEN_EXPIRY: z.string().default('300'), // seconds; 5 min default
   // Read-first / Curator model.
   READER_SESSION_EXPIRY: z.string().default('30d'), // long-lived reader IDENTITY (read personalization only; NOT writes)
-  CURATOR_MIN_XP: z.string().default('1724'),        // XP at/above which a reader is a Curator (sees AI evals, curates) — "the magic number"
+  CURATOR_MIN_XP: z.string().default('1724'), // XP at/above which a reader is a Curator (sees AI evals, curates) — "the magic number"
   // Always-Curator/admin handles (staff). Baked default; overridable via the env var on Render.
   // Only include handles that are ALREADY registered (an unregistered admin handle is
   // squattable → add michael-lin here AFTER he creates his account).
@@ -63,7 +67,9 @@ export const env = {
   readerSessionExpiry: parsed.data.READER_SESSION_EXPIRY,
   curatorMinXp: parseInt(parsed.data.CURATOR_MIN_XP, 10),
   adminHandles: new Set(
-    parsed.data.ADMIN_HANDLES.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
+    parsed.data.ADMIN_HANDLES.split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
   ),
   featuredScriptId: parsed.data.FEATURED_SCRIPT_ID,
   featuredScriptTitle: parsed.data.FEATURED_SCRIPT_TITLE,
@@ -74,7 +80,7 @@ export const env = {
 if (/change[-_ ]?me|placeholder|your[-_ ]?secret/i.test(parsed.data.JWT_SECRET)) {
   logger.error(
     'JWT_SECRET looks like a placeholder (e.g. "change-me…"). ' +
-    'Set a real random secret: openssl rand -hex 32',
+      'Set a real random secret: openssl rand -hex 32',
   );
   if (process.env.NODE_ENV === 'production') {
     logger.fatal('Refusing to start in production with a placeholder JWT_SECRET.');

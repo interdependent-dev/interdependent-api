@@ -46,7 +46,12 @@ test('a tiny excerpt does not trip the rate (absolute floor)', () => {
 
 test('sentence-ending short lines are NOT orphans', () => {
   // "trees." etc. end a wrapped sentence — legitimate, must not be flagged
-  const block = ['The town wakes under a cold sky and no', 'trees.', 'A dog barks once, then', 'quiet.'].join('\n');
+  const block = [
+    'The town wakes under a cold sky and no',
+    'trees.',
+    'A dog barks once, then',
+    'quiet.',
+  ].join('\n');
   // only "quiet." style (with period) — none are bare lowercase words, so 0 orphans
   const text = Array(30).fill(block).join('\n');
   const r = screenplayFormatGate(text, { pageCount: 5 });

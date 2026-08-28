@@ -18,7 +18,17 @@ export async function upsertUser({ name, email }) {
 /**
  * Insert a new script row. Returns the created row.
  */
-export async function saveScript({ userId, title, filename, storagePath, pageCount, wordCount, charCount, submitterName, submitterEmail }) {
+export async function saveScript({
+  userId,
+  title,
+  filename,
+  storagePath,
+  pageCount,
+  wordCount,
+  charCount,
+  submitterName,
+  submitterEmail,
+}) {
   const base = {
     user_id: userId,
     title,
@@ -38,7 +48,11 @@ export async function saveScript({ userId, title, filename, storagePath, pageCou
   // keeps each submission's true submitter.
   let { data, error } = await supabase
     .from('scripts')
-    .insert({ ...base, submitter_name: submitterName ?? null, submitter_email: submitterEmail ?? null })
+    .insert({
+      ...base,
+      submitter_name: submitterName ?? null,
+      submitter_email: submitterEmail ?? null,
+    })
     .select()
     .single();
 
@@ -75,11 +89,13 @@ export async function updateScriptEvaluation({ id, evaluationResult, evaluationJ
  */
 export async function mergeScriptEvaluationJson({ id, patch }) {
   const { data, error: selErr } = await supabase
-    .from('scripts').select('evaluation_json').eq('id', id).single();
+    .from('scripts')
+    .select('evaluation_json')
+    .eq('id', id)
+    .single();
   if (selErr) throw new Error(`DB mergeScriptEvaluationJson select: ${selErr.message}`);
   const merged = { ...(data?.evaluation_json || {}), ...patch };
-  const { error } = await supabase
-    .from('scripts').update({ evaluation_json: merged }).eq('id', id);
+  const { error } = await supabase.from('scripts').update({ evaluation_json: merged }).eq('id', id);
   if (error) throw new Error(`DB mergeScriptEvaluationJson update: ${error.message}`);
 }
 
@@ -108,9 +124,13 @@ export async function insertReadEvent(e) {
 export async function listReadEvents({ sinceISO, scriptId } = {}) {
   const out = [];
   for (let from = 0; ; from += 1000) {
-    let qy = supabase.from('read_events')
-      .select('event_type, script_id, session_id, reader_id, recommender, source, page, total_pages, depth_pct, seconds, ts')
-      .order('ts', { ascending: true }).range(from, from + 999);
+    let qy = supabase
+      .from('read_events')
+      .select(
+        'event_type, script_id, session_id, reader_id, recommender, source, page, total_pages, depth_pct, seconds, ts',
+      )
+      .order('ts', { ascending: true })
+      .range(from, from + 999);
     if (sinceISO) qy = qy.gte('ts', sinceISO);
     if (scriptId) qy = qy.eq('script_id', scriptId);
     const { data, error } = await qy;
@@ -126,14 +146,16 @@ export async function listReadEvents({ sinceISO, scriptId } = {}) {
 // recorded on one device unlocks the gate on another, because read_events carry
 // the reader_id of whoever was signed in during the read.
 export async function getReaderScriptRead(readerId, scriptId) {
-  const { data, error } = await supabase.from('read_events')
+  const { data, error } = await supabase
+    .from('read_events')
     .select('depth_pct, seconds')
     .eq('reader_id', readerId)
     .eq('script_id', scriptId)
     .eq('event_type', 'read_progress');
   if (error) throw new Error(`DB getReaderScriptRead: ${error.message}`);
-  let depth = 0, seconds = 0;
-  for (const r of (data || [])) {
+  let depth = 0,
+    seconds = 0;
+  for (const r of data || []) {
     if (r.depth_pct != null) depth = Math.max(depth, r.depth_pct);
     if (r.seconds != null) seconds = Math.max(seconds, r.seconds);
   }
@@ -142,22 +164,29 @@ export async function getReaderScriptRead(readerId, scriptId) {
 
 // A single script's page_count, for pace-aware completion (light — skips the row).
 export async function getScriptPageCount(scriptId) {
-  const { data, error } = await supabase.from('scripts')
-    .select('page_count').eq('id', scriptId).maybeSingle();
+  const { data, error } = await supabase
+    .from('scripts')
+    .select('page_count')
+    .eq('id', scriptId)
+    .maybeSingle();
   if (error) return null;
   return data?.page_count ?? null;
 }
 
 // All readers (passkey identities) — for resolving names in analytics.
 export async function getReaders() {
-  const { data, error } = await supabase.from('readers').select('id, handle, display_name, photo_path, created_at');
+  const { data, error } = await supabase
+    .from('readers')
+    .select('id, handle, display_name, photo_path, created_at');
   if (error) throw new Error(`DB getReaders: ${error.message}`);
   return data || [];
 }
 
 // All champions (reader_leaderboard) — the authoritative "who championed what".
 export async function getChampions() {
-  const { data, error } = await supabase.from('reader_leaderboard').select('reader_id, script_id, added_at');
+  const { data, error } = await supabase
+    .from('reader_leaderboard')
+    .select('reader_id, script_id, added_at');
   if (error) throw new Error(`DB getChampions: ${error.message}`);
   return data || [];
 }
@@ -165,60 +194,88 @@ export async function getChampions() {
 // ── reader feedback ──────────────────────────────────────────────────────────
 export async function insertFeedback(row) {
   const fields = {
-    script_id: row.scriptId, reader_id: row.readerId ?? null,
-    champion_verdict: row.championVerdict ?? null, dimensions: row.dimensions ?? null,
-    text: row.text ?? null, transcript: row.transcript ?? null,
+    script_id: row.scriptId,
+    reader_id: row.readerId ?? null,
+    champion_verdict: row.championVerdict ?? null,
+    dimensions: row.dimensions ?? null,
+    text: row.text ?? null,
+    transcript: row.transcript ?? null,
   };
   // Idempotent per (reader, script): editing/re-submitting feedback UPDATES the
   // existing row rather than inserting a duplicate, so XP/gates can't be farmed.
   // (Guest feedback — no reader_id — always inserts.)
   if (row.readerId) {
-    const existing = await supabase.from('reader_feedback')
-      .select('id').eq('reader_id', row.readerId).eq('script_id', row.scriptId)
-      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const existing = await supabase
+      .from('reader_feedback')
+      .select('id')
+      .eq('reader_id', row.readerId)
+      .eq('script_id', row.scriptId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (existing.data?.id) {
-      const { error } = await supabase.from('reader_feedback').update(fields).eq('id', existing.data.id);
+      const { error } = await supabase
+        .from('reader_feedback')
+        .update(fields)
+        .eq('id', existing.data.id);
       if (error) throw new Error(`DB insertFeedback(update): ${error.message}`);
       return existing.data.id;
     }
   }
-  const { data, error } = await supabase.from('reader_feedback').insert(fields).select('id').single();
+  const { data, error } = await supabase
+    .from('reader_feedback')
+    .insert(fields)
+    .select('id')
+    .single();
   if (error) throw new Error(`DB insertFeedback: ${error.message}`);
   return data.id;
 }
 
 export async function setFeedbackAudio({ id, audioPath }) {
-  const { error } = await supabase.from('reader_feedback').update({ audio_path: audioPath }).eq('id', id);
+  const { error } = await supabase
+    .from('reader_feedback')
+    .update({ audio_path: audioPath })
+    .eq('id', id);
   if (error) throw new Error(`DB setFeedbackAudio: ${error.message}`);
 }
 
 // Voice notes live in the existing scripts bucket under a feedback/ prefix.
 export async function uploadFeedbackAudio({ scriptId, feedbackId, buffer, ext }) {
   const path = `feedback/${scriptId}/${feedbackId}.${ext === 'mp4' ? 'mp4' : 'webm'}`;
-  const { error } = await supabase.storage.from('scripts')
-    .upload(path, buffer, { contentType: ext === 'mp4' ? 'audio/mp4' : 'audio/webm', upsert: true });
+  const { error } = await supabase.storage.from('scripts').upload(path, buffer, {
+    contentType: ext === 'mp4' ? 'audio/mp4' : 'audio/webm',
+    upsert: true,
+  });
   if (error) throw new Error(`Storage uploadFeedbackAudio: ${error.message}`);
   return path;
 }
 
 export async function listFeedback(scriptId) {
-  const { data, error } = await supabase.from('reader_feedback')
-    .select('id, reader_id, created_at, champion_verdict, dimensions, text, audio_path, transcript, readers(display_name, handle)')
-    .eq('script_id', scriptId).order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('reader_feedback')
+    .select(
+      'id, reader_id, created_at, champion_verdict, dimensions, text, audio_path, transcript, readers(display_name, handle)',
+    )
+    .eq('script_id', scriptId)
+    .order('created_at', { ascending: false });
   if (error) throw new Error(`DB listFeedback: ${error.message}`);
   return data || [];
 }
 
 // Aggregate feedback counts per script (for the analytics dashboard).
 export async function getFeedbackCounts() {
-  const { data, error } = await supabase.from('reader_feedback').select('script_id, champion_verdict');
+  const { data, error } = await supabase
+    .from('reader_feedback')
+    .select('script_id, champion_verdict');
   if (error) throw new Error(`DB getFeedbackCounts: ${error.message}`);
   return data || [];
 }
 
 // (reader_id, script_id) feedback pairs — for the reader reputation engine.
 export async function getFeedbackPairs() {
-  const { data, error } = await supabase.from('reader_feedback').select('reader_id, script_id, champion_verdict');
+  const { data, error } = await supabase
+    .from('reader_feedback')
+    .select('reader_id, script_id, champion_verdict');
   if (error) throw new Error(`DB getFeedbackPairs: ${error.message}`);
   return data || [];
 }
@@ -227,8 +284,11 @@ export async function getFeedbackPairs() {
 // notes length, and whether a voice note exists. Kept separate from the lighter
 // pairs/counts accessors so the XP engine sees everything it scores on.
 export async function getFeedbackForXp() {
-  const { data, error } = await supabase.from('reader_feedback')
-    .select('reader_id, script_id, champion_verdict, dimensions, text, transcript, audio_path, created_at');
+  const { data, error } = await supabase
+    .from('reader_feedback')
+    .select(
+      'reader_id, script_id, champion_verdict, dimensions, text, transcript, audio_path, created_at',
+    );
   if (error) throw new Error(`DB getFeedbackForXp: ${error.message}`);
   return data || [];
 }
@@ -253,7 +313,8 @@ export async function claimNotification(readerId, kind, ref = '') {
 
 // All reader feedback with notes — for the READERS page (see what each reader said).
 export async function getAllFeedback() {
-  const { data, error } = await supabase.from('reader_feedback')
+  const { data, error } = await supabase
+    .from('reader_feedback')
     .select('reader_id, script_id, champion_verdict, text, transcript, created_at');
   if (error) throw new Error(`DB getAllFeedback: ${error.message}`);
   return data || [];
@@ -263,7 +324,10 @@ export async function getAllFeedback() {
 export async function getScriptTitles() {
   const out = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('scripts').select('id, title, page_count').range(from, from + 999);
+    const { data, error } = await supabase
+      .from('scripts')
+      .select('id, title, page_count')
+      .range(from, from + 999);
     if (error) throw new Error(`DB getScriptTitles: ${error.message}`);
     out.push(...(data || []));
     if (!data || data.length < 1000) break;
@@ -368,11 +432,12 @@ export async function markScriptProcessing({ id }) {
  * List all scripts with their submitting user's name and email.
  */
 export async function listScripts({ limit = 50, offset = 0, surfacedOnly = false } = {}) {
-  const base = (orderCol) => supabase
-    .from('scripts')
-    .select('*, users(name, email)')
-    .order(orderCol, { ascending: false, nullsFirst: false })
-    .range(offset, offset + limit - 1);
+  const base = (orderCol) =>
+    supabase
+      .from('scripts')
+      .select('*, users(name, email)')
+      .order(orderCol, { ascending: false, nullsFirst: false })
+      .range(offset, offset + limit - 1);
   // Read-first surfacing: Readers only see scripts a Curator has surfaced —
   // ordered by WHEN they were surfaced (newest curation first; scripts_surfaced_idx
   // covers exactly this). Curators keep the full slate by submission date.
@@ -395,7 +460,10 @@ export async function listScripts({ limit = 50, offset = 0, surfacedOnly = false
 export async function setScriptSurfaced({ id, surfaced }) {
   const { data, error } = await supabase
     .from('scripts')
-    .update({ surfaced_to_readers: !!surfaced, surfaced_at: surfaced ? new Date().toISOString() : null })
+    .update({
+      surfaced_to_readers: !!surfaced,
+      surfaced_at: surfaced ? new Date().toISOString() : null,
+    })
     .eq('id', id)
     .select('id, surfaced_to_readers, surfaced_at')
     .single();

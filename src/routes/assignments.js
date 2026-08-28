@@ -17,7 +17,11 @@ import { optionalReader } from '../middleware/optionalReader.js';
 import { env } from '../config/env.js';
 import { getReaderByHandle } from '../services/readerService.js';
 import { getScriptById } from '../services/supabaseService.js';
-import { createAssignment, listAssignments, deleteAssignment } from '../services/assignmentService.js';
+import {
+  createAssignment,
+  listAssignments,
+  deleteAssignment,
+} from '../services/assignmentService.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { UUID } from '../lib/ids.js';
 
@@ -44,8 +48,9 @@ router.post('/', requireActionToken, requireStaff, async (req, res, next) => {
       return next(new AppError('A valid scriptId is required', 400));
     }
     const wanted = readerHandle.trim();
-    const reader = (await getReaderByHandle(wanted).catch(() => null))
-      || (await getReaderByHandle(wanted.toLowerCase()).catch(() => null));
+    const reader =
+      (await getReaderByHandle(wanted).catch(() => null)) ||
+      (await getReaderByHandle(wanted.toLowerCase()).catch(() => null));
     if (!reader) return next(new AppError('Reader not found', 404));
     const script = await getScriptById(scriptId).catch(() => null);
     if (!script) return next(new AppError('Script not found', 404));
@@ -60,7 +65,9 @@ router.post('/', requireActionToken, requireStaff, async (req, res, next) => {
       });
     } catch (e) {
       if (e.duplicate) {
-        return next(new AppError('This script is already assigned to that reader', 409, 'assignment_exists'));
+        return next(
+          new AppError('This script is already assigned to that reader', 409, 'assignment_exists'),
+        );
       }
       throw e;
     }

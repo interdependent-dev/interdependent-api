@@ -16,34 +16,35 @@ async function sendEmail(payload) {
 
 // True when the screenplay's language is anything other than English.
 function isNonEnglish(language) {
-  const l = String(language || '').trim().toLowerCase();
+  const l = String(language || '')
+    .trim()
+    .toLowerCase();
   return l !== '' && !l.startsWith('en'); // "English", "en", "en-US" → English
 }
 
 const DECISION_COLORS = {
   RECOMMEND: { bg: '#16a34a', label: 'RECOMMEND' },
-  CONSIDER:  { bg: '#d97706', label: 'CONSIDER'  },
-  PASS:      { bg: '#dc2626', label: 'PASS'       },
+  CONSIDER: { bg: '#d97706', label: 'CONSIDER' },
+  PASS: { bg: '#dc2626', label: 'PASS' },
 };
-
-function scoreBar(score) {
-  const filled = Math.round(score);
-  const blocks = '█'.repeat(filled) + '░'.repeat(10 - filled);
-  return `${blocks} ${score}/10`;
-}
 
 // Two evaluators have shipped: "Casey" (6 categories → weighted_score, comps,
 // summary) and "BARAKA" (7 craft categories → final_craft_score, plus a separate
 // Championability HIGH/MED/LOW axis). Collapse either into one render shape.
 const CRAFT_NAMES = {
-  story_architecture: 'Story Architecture', character_construction: 'Character Construction',
-  scene_craft: 'Scene Craft', screenplay_execution: 'Screenplay Execution',
-  dialogue_effectiveness: 'Dialogue', thematic_cohesion: 'Thematic Cohesion',
+  story_architecture: 'Story Architecture',
+  character_construction: 'Character Construction',
+  scene_craft: 'Scene Craft',
+  screenplay_execution: 'Screenplay Execution',
+  dialogue_effectiveness: 'Dialogue',
+  thematic_cohesion: 'Thematic Cohesion',
   emotional_engagement: 'Emotional Engagement',
 };
 const CHAMP_NAMES = {
-  distinctiveness: 'Distinctiveness', writers_voice: "Writer's Voice",
-  memorability: 'Memorability', genre_competence: 'Genre Competence',
+  distinctiveness: 'Distinctiveness',
+  writers_voice: "Writer's Voice",
+  memorability: 'Memorability',
+  genre_competence: 'Genre Competence',
 };
 const CHAMP_COLORS = { HIGH: '#16a34a', MEDIUM: '#d97706', LOW: '#dc2626' };
 
@@ -54,31 +55,66 @@ function normalizeForEmail(d) {
   if (isBaraka) {
     const cs = e.craft_score || {};
     const cr = e.championability_rating || {};
-    const categories = Object.keys(CRAFT_NAMES).filter((k) => cs[k]).map((k) => ({
-      name: CRAFT_NAMES[k], score: cs[k].score, justification: cs[k].rationale ?? cs[k].justification,
-    }));
-    const items = Object.keys(CHAMP_NAMES).filter((k) => cr[k]).map((k) => ({
-      name: CHAMP_NAMES[k], description: cr[k].description ?? cr[k].rationale,
-    }));
+    const categories = Object.keys(CRAFT_NAMES)
+      .filter((k) => cs[k])
+      .map((k) => ({
+        name: CRAFT_NAMES[k],
+        score: cs[k].score,
+        justification: cs[k].rationale ?? cs[k].justification,
+      }));
+    const items = Object.keys(CHAMP_NAMES)
+      .filter((k) => cr[k])
+      .map((k) => ({
+        name: CHAMP_NAMES[k],
+        description: cr[k].description ?? cr[k].rationale,
+      }));
     const rating = (cr.final_championability_rating || '').toString().toUpperCase();
     return {
-      decision: d.decision, genre: d.genre, country: d.country, budget: d.budget || null,
-      scoreValue: cs.final_craft_score, scoreLabel: 'Craft Score',
-      categories, championship: (rating || items.length) ? { rating, items, justification: cr.championability_justification } : null,
-      comps: null, summary: d.logline || d.summary || cs.craft_justification || '',
-      craftAssessment: cs.craft_justification || '', readVerified: d.read_verified,
+      decision: d.decision,
+      genre: d.genre,
+      country: d.country,
+      budget: d.budget || null,
+      scoreValue: cs.final_craft_score,
+      scoreLabel: 'Craft Score',
+      categories,
+      championship:
+        rating || items.length
+          ? { rating, items, justification: cr.championability_justification }
+          : null,
+      comps: null,
+      summary: d.logline || d.summary || cs.craft_justification || '',
+      craftAssessment: cs.craft_justification || '',
+      readVerified: d.read_verified,
     };
   }
   const scores = d.scores || {};
-  const categories = [['theme', 'Theme'], ['character', 'Character'], ['dialogue', 'Dialogue'],
-    ['plot_structure', 'Plot/Structure'], ['marketability', 'Marketability'], ['originality', 'Originality']]
-    .filter(([k]) => scores[k]).map(([k, name]) => ({ name, score: scores[k]?.score, justification: scores[k]?.justification }));
+  const categories = [
+    ['theme', 'Theme'],
+    ['character', 'Character'],
+    ['dialogue', 'Dialogue'],
+    ['plot_structure', 'Plot/Structure'],
+    ['marketability', 'Marketability'],
+    ['originality', 'Originality'],
+  ]
+    .filter(([k]) => scores[k])
+    .map(([k, name]) => ({
+      name,
+      score: scores[k]?.score,
+      justification: scores[k]?.justification,
+    }));
   return {
-    decision: d.decision, genre: d.genre, country: d.country,
+    decision: d.decision,
+    genre: d.genre,
+    country: d.country,
     budget: d.max_budget != null ? `$${Number(d.max_budget).toLocaleString()}` : null,
-    scoreValue: d.weighted_score, scoreLabel: 'Weighted Score',
-    categories, championship: null, comps: d.comparable_films || null, summary: d.logline || d.summary || '',
-    craftAssessment: '', readVerified: undefined,
+    scoreValue: d.weighted_score,
+    scoreLabel: 'Weighted Score',
+    categories,
+    championship: null,
+    comps: d.comparable_films || null,
+    summary: d.logline || d.summary || '',
+    craftAssessment: '',
+    readVerified: undefined,
   };
 }
 
@@ -87,30 +123,43 @@ function buildHtml({ submitterName, title, evaluationJson }) {
   const n = normalizeForEmail(d);
   const decision = DECISION_COLORS[n.decision] ?? { bg: '#6b7280', label: n.decision };
 
-  const scoreRows = n.categories.map(({ name, score, justification }) => `
+  const scoreRows = n.categories
+    .map(
+      ({ name, score, justification }) => `
     <tr>
       <td style="padding:10px 12px;font-weight:600;white-space:nowrap;color:#374151;">${name}</td>
       <td style="padding:10px 12px;text-align:center;">
         <span style="display:inline-block;background:#f3f4f6;border-radius:20px;padding:3px 12px;font-weight:700;color:#111827;">${score ?? '—'}</span>
       </td>
       <td style="padding:10px 12px;color:#4b5563;font-size:14px;">${justification ?? ''}</td>
-    </tr>`).join('');
+    </tr>`,
+    )
+    .join('');
 
   const champ = n.championship;
-  const championabilitySection = champ ? `
+  const championabilitySection = champ
+    ? `
     <div style="padding:0 40px 24px;">
       <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Championability
         <span style="display:inline-block;margin-left:8px;background:${CHAMP_COLORS[champ.rating] || '#6b7280'};color:#fff;font-weight:700;font-size:12px;letter-spacing:1px;padding:3px 12px;border-radius:6px;vertical-align:middle;">${champ.rating || '—'}</span>
       </h3>
-      ${champ.items.map((it) => `
+      ${champ.items
+        .map(
+          (it) => `
         <p style="margin:0 0 10px;"><strong style="color:#374151;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">${it.name}</strong><br>
-          <span style="color:#4b5563;font-size:14px;line-height:1.6;">${it.description ?? ''}</span></p>`).join('')}
+          <span style="color:#4b5563;font-size:14px;line-height:1.6;">${it.description ?? ''}</span></p>`,
+        )
+        .join('')}
       ${champ.justification ? `<p style="margin:8px 0 0;color:#374151;font-size:14px;line-height:1.7;font-style:italic;">${champ.justification}</p>` : ''}
-    </div>` : '';
+    </div>`
+    : '';
 
-  const comparables = (n.comps ?? []).map((f) =>
-    `<li style="margin-bottom:4px;"><strong>${f.title}</strong> — $${Number(f.budget).toLocaleString()}</li>`
-  ).join('');
+  const comparables = (n.comps ?? [])
+    .map(
+      (f) =>
+        `<li style="margin-bottom:4px;"><strong>${f.title}</strong> — $${Number(f.budget).toLocaleString()}</li>`,
+    )
+    .join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -157,32 +206,48 @@ function buildHtml({ submitterName, title, evaluationJson }) {
       </table>
     </div>
 
-    ${n.readVerified === false ? `
+    ${
+      n.readVerified === false
+        ? `
     <div style="padding:0 40px 16px;">
       <p style="margin:0;background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #d97706;border-radius:6px;padding:10px 14px;color:#92400e;font-size:13px;">⚠ Partial read — the model could not be confirmed to have read the ending. Treat the scores and summary with caution.</p>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
 
     ${championabilitySection}
 
     <!-- Summary -->
-    ${n.summary ? `
+    ${
+      n.summary
+        ? `
     <div style="padding:0 40px 24px;">
       <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Summary</h3>
       <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${n.summary}</p>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
 
-    ${n.craftAssessment && n.craftAssessment !== n.summary ? `
+    ${
+      n.craftAssessment && n.craftAssessment !== n.summary
+        ? `
     <div style="padding:0 40px 24px;">
       <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Craft Assessment</h3>
       <p style="margin:0;color:#374151;font-size:15px;line-height:1.7;">${n.craftAssessment}</p>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
 
     <!-- Comparable films -->
-    ${comparables ? `
+    ${
+      comparables
+        ? `
     <div style="padding:0 40px 24px;">
       <h3 style="margin:0 0 12px;color:#0f172a;font-size:15px;text-transform:uppercase;letter-spacing:0.5px;">Comparable Films</h3>
       <ul style="margin:0;padding-left:20px;color:#374151;font-size:14px;line-height:1.8;">${comparables}</ul>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
 
     <!-- Footer -->
     <div style="background:#f8fafc;padding:20px 40px;border-top:1px solid #e5e7eb;">
@@ -221,7 +286,13 @@ export async function sendAdminAlert({ subject, message }) {
  * Attaches the full JSON as a .txt file.
  * Non-fatal: logs errors rather than throwing.
  */
-export async function sendEvaluationEmail({ submitterName, submitterEmail, title, evaluationJson, rawText }) {
+export async function sendEvaluationEmail({
+  submitterName,
+  submitterEmail,
+  title,
+  evaluationJson,
+  rawText,
+}) {
   const decision = evaluationJson?.decision ?? 'EVALUATED';
   const subject = `[${decision}] Screenplay Evaluation — ${title}`;
 
@@ -237,26 +308,38 @@ export async function sendEvaluationEmail({ submitterName, submitterEmail, title
     ? buildHtml({ submitterName, title, evaluationJson })
     : `<p>Screenplay evaluation for <strong>${title}</strong> (submitted by ${submitterName}) is attached.</p>`;
 
-  const attachments = [{
-    filename: `${title.replace(/[^a-z0-9]/gi, '_')}_evaluation.txt`,
-    content: attachmentContent,
-  }];
+  const attachments = [
+    {
+      filename: `${title.replace(/[^a-z0-9]/gi, '_')}_evaluation.txt`,
+      content: attachmentContent,
+    },
+  ];
 
   // The platform keeps the evaluation in English; the WRITER receives it in the
   // screenplay's language so they can read it natively. The admin copy stays English.
-  let writerSubject = subject, writerHtml = html;
+  let writerSubject = subject,
+    writerHtml = html;
   if (evaluationJson && isNonEnglish(evaluationJson.language)) {
     try {
       const t = await translateEmail({ subject, html, language: evaluationJson.language });
-      writerSubject = t.subject; writerHtml = t.html;
+      writerSubject = t.subject;
+      writerHtml = t.html;
     } catch (err) {
-      logger.error({ language: evaluationJson.language, title, err }, 'Email translation failed — sending English');
+      logger.error(
+        { language: evaluationJson.language, title, err },
+        'Email translation failed — sending English',
+      );
     }
   }
 
-  const send = (to, subj, body) => sendEmail({
-    from: env.emailFrom, to, subject: subj, html: body, attachments,
-  }).catch((err) => logger.error({ title, err }, 'Failed to send evaluation email'));
+  const send = (to, subj, body) =>
+    sendEmail({
+      from: env.emailFrom,
+      to,
+      subject: subj,
+      html: body,
+      attachments,
+    }).catch((err) => logger.error({ title, err }, 'Failed to send evaluation email'));
 
   if (writerHtml !== html) {
     // translated writer copy + English admin copy
@@ -294,15 +377,24 @@ export async function sendFailureAlert({ title, submitterName, submitterEmail, r
  * are sent — the point is a clear, encouraging fix-and-resubmit note. BCCs admin.
  * Non-fatal: logs rather than throwing.
  */
-export async function sendRevisionRequest({ submitterName, submitterEmail, title, kind, message, reason }) {
-  const heading = kind === 'translation'
-    ? 'Please resubmit in the original language'
-    : 'Your screenplay needs reformatting';
+export async function sendRevisionRequest({
+  submitterName,
+  submitterEmail,
+  title,
+  kind,
+  message,
+  reason,
+}) {
+  const heading =
+    kind === 'translation'
+      ? 'Please resubmit in the original language'
+      : 'Your screenplay needs reformatting';
   const subject = `[ACTION NEEDED] ${title} — please revise and resubmit`;
   const hi = submitterName ? `Hi ${submitterName},` : 'Hi,';
-  const detailNote = kind === 'translation'
-    ? `Our reviewer reads and evaluates every language natively, so the strongest path is to submit your screenplay in the language you wrote it in. If you'd rather keep it in English, please have it professionally edited into fully idiomatic English first.`
-    : `Please open your screenplay in screenwriting software (Final Draft, WriterDuet, Fade In, Highland, etc.) and export a fresh PDF, then resubmit. That preserves the standard screenplay formatting our evaluation depends on.`;
+  const detailNote =
+    kind === 'translation'
+      ? `Our reviewer reads and evaluates every language natively, so the strongest path is to submit your screenplay in the language you wrote it in. If you'd rather keep it in English, please have it professionally edited into fully idiomatic English first.`
+      : `Please open your screenplay in screenwriting software (Final Draft, WriterDuet, Fade In, Highland, etc.) and export a fresh PDF, then resubmit. That preserves the standard screenplay formatting our evaluation depends on.`;
 
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -341,7 +433,13 @@ export async function sendRevisionRequest({ submitterName, submitterEmail, title
  * Throws on send failure so the caller can log it (the caller still returns a
  * generic response to avoid leaking whether the email was sent).
  */
-export async function sendRecoveryEmail({ to, displayName, handle, recoverUrl, expiresMinutes = 30 }) {
+export async function sendRecoveryEmail({
+  to,
+  displayName,
+  handle,
+  recoverUrl,
+  expiresMinutes = 30,
+}) {
   const hi = displayName ? `Hi ${displayName},` : 'Hi,';
   const subject = 'Recover your Interdependent reader account';
   const html = `<!DOCTYPE html>

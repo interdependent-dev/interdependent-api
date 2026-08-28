@@ -19,7 +19,9 @@ SUBJECT: <translated subject line>
 <the full translated HTML document>`;
   const user = `Subject: ${subject}\n\nHTML:\n${html}`;
   // Haiku first (cheap, multilingual, plenty for translation), then the eval models.
-  const models = [...new Set(['claude-haiku-4-5-20251001', env.anthropicModel.trim(), 'claude-opus-4-8'])];
+  const models = [
+    ...new Set(['claude-haiku-4-5-20251001', env.anthropicModel.trim(), 'claude-opus-4-8']),
+  ];
   let lastErr;
   for (const model of models) {
     try {
@@ -27,10 +29,19 @@ SUBJECT: <translated subject line>
         { model, max_tokens: 16_000, system, messages: [{ role: 'user', content: user }] },
         { timeout: 120_000, maxRetries: 1 },
       );
-      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const text = resp.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
       const i = text.indexOf('---HTML---');
-      if (i === -1) { lastErr = new Error('translation format missing'); continue; }
-      const subj = text.slice(0, i).replace(/^\s*SUBJECT:\s*/i, '').trim();
+      if (i === -1) {
+        lastErr = new Error('translation format missing');
+        continue;
+      }
+      const subj = text
+        .slice(0, i)
+        .replace(/^\s*SUBJECT:\s*/i, '')
+        .trim();
       const body = text.slice(i + '---HTML---'.length).trim();
       if (body.length > 50) return { subject: subj || subject, html: body };
       lastErr = new Error('translation too short');

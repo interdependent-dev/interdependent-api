@@ -20,10 +20,16 @@ export async function listTopReaders(req, res, next) {
     const { readers, events, champions, feedback, scripts } = rows;
     const xpList = await getAllReaderXp(rows);
     const xpByReaderId = {};
-    xpList.forEach((x) => { xpByReaderId[x.readerId] = x; });
+    xpList.forEach((x) => {
+      xpByReaderId[x.readerId] = x;
+    });
 
-    const titleById = {}, pagesById = {};
-    scripts.forEach((t) => { titleById[t.id] = t.title; pagesById[t.id] = t.page_count; });
+    const titleById = {},
+      pagesById = {};
+    scripts.forEach((t) => {
+      titleById[t.id] = t.title;
+      pagesById[t.id] = t.page_count;
+    });
 
     // (reader, script) pairs the reader has championed — raw board-adds, so the
     // flag mirrors what the reader actually did (XP separately read-gates them).
@@ -65,37 +71,42 @@ export async function listTopReaders(req, res, next) {
       });
     }
 
-    const list = readers.map((r) => {
-      const rd = byReader[r.id] || {};
-      const handleLc = String(r.handle || '').toLowerCase();
-      const reads = Object.entries(rd).map(([sid, v]) => ({
-        id: sid,                                                // script id → clickable to its detail
-        title: titleById[sid] || 'Untitled',
-        pct: readingPct(v.depth, v.seconds, pagesById[sid]),   // honest: depth AND time
-        pages: pagesById[sid] || null,                          // total pages → render "read / total"
-        finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
-        last: v.last,
-        championed: champSet.has(`${r.id}::${sid}`),           // on this reader's board
-        recommended: recSet.has(`${handleLc}::${sid}`),        // this reader shared it on
-      })).sort((a, b) => (a.last < b.last ? 1 : -1));
-      const fb = (fbByReader[r.id] || []).sort((a, b) => (a.when < b.when ? 1 : -1));
-      const xp = xpByReaderId[r.id];
-      return {
-        handle: r.handle,
-        name: r.display_name || r.handle,
-        photoUrl: publicPhotoUrl(r.photo_path),
-        joinedAt: r.created_at || null,
-        staff: env.adminHandles.has(handleLc),   // team member (ADMIN_HANDLES)
-        totalXp: xp ? xp.totalXp : 0,            // the ordering key — no second call needed
-        recsLanded: xp ? xp.raw.recsLanded : 0,  // first tie-break (exposed for transparency)
-        reads,
-        scriptsRead: reads.length,
-        finished: reads.filter((x) => x.finished).length,
-        feedback: fb,
-      };
-    })
-      .filter((r) => r.finished >= MIN_FINISHED)   // only readers who've earned a spot
-      .sort((a, b) => b.totalXp - a.totalXp || b.recsLanded - a.recsLanded || b.finished - a.finished);
+    const list = readers
+      .map((r) => {
+        const rd = byReader[r.id] || {};
+        const handleLc = String(r.handle || '').toLowerCase();
+        const reads = Object.entries(rd)
+          .map(([sid, v]) => ({
+            id: sid, // script id → clickable to its detail
+            title: titleById[sid] || 'Untitled',
+            pct: readingPct(v.depth, v.seconds, pagesById[sid]), // honest: depth AND time
+            pages: pagesById[sid] || null, // total pages → render "read / total"
+            finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
+            last: v.last,
+            championed: champSet.has(`${r.id}::${sid}`), // on this reader's board
+            recommended: recSet.has(`${handleLc}::${sid}`), // this reader shared it on
+          }))
+          .sort((a, b) => (a.last < b.last ? 1 : -1));
+        const fb = (fbByReader[r.id] || []).sort((a, b) => (a.when < b.when ? 1 : -1));
+        const xp = xpByReaderId[r.id];
+        return {
+          handle: r.handle,
+          name: r.display_name || r.handle,
+          photoUrl: publicPhotoUrl(r.photo_path),
+          joinedAt: r.created_at || null,
+          staff: env.adminHandles.has(handleLc), // team member (ADMIN_HANDLES)
+          totalXp: xp ? xp.totalXp : 0, // the ordering key — no second call needed
+          recsLanded: xp ? xp.raw.recsLanded : 0, // first tie-break (exposed for transparency)
+          reads,
+          scriptsRead: reads.length,
+          finished: reads.filter((x) => x.finished).length,
+          feedback: fb,
+        };
+      })
+      .filter((r) => r.finished >= MIN_FINISHED) // only readers who've earned a spot
+      .sort(
+        (a, b) => b.totalXp - a.totalXp || b.recsLanded - a.recsLanded || b.finished - a.finished,
+      );
 
     res.json({ readers: list });
   } catch (err) {

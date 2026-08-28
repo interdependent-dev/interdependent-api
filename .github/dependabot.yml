@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: "/"
+    directory: '/'
     schedule:
       interval: weekly
       day: monday
@@ -16,13 +16,13 @@ updates:
       # Majors held back deliberately — land only with an explicit migration
       # ticket (see the Express 5 / Zod 4 assessment in PR history).
       - dependency-name: express
-        update-types: ["version-update:semver-major"]
+        update-types: ['version-update:semver-major']
       - dependency-name: zod
-        update-types: ["version-update:semver-major"]
+        update-types: ['version-update:semver-major']
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
-    directory: "/"
+    directory: '/'
     schedule:
       interval: weekly
       day: monday

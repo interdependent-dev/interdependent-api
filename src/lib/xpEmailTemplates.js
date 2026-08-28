@@ -9,7 +9,10 @@ const SITE = 'https://www.interdependent.studio';
 const RED = '#FF0000';
 
 function esc(s) {
-  return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return String(s == null ? '' : s).replace(
+    /[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c],
+  );
 }
 
 function signature() {
@@ -68,13 +71,16 @@ const hi = (name) => `<p style="margin:0 0 14px;">Hi ${esc(name)},</p>`;
 // ── Action emails (first review / first champion) ────────────────────────────
 
 export function feedbackEmail(name, scriptTitle) {
-  const t = scriptTitle ? `<strong style="color:#fff;">“${esc(scriptTitle)}”</strong>` : 'a screenplay';
+  const t = scriptTitle
+    ? `<strong style="color:#fff;">“${esc(scriptTitle)}”</strong>`
+    : 'a screenplay';
   return {
     subject: 'Thank you for your first read',
     html: wrap({
       eyebrow: 'Your first review',
       heading: 'A real reader just weighed in — thank you.',
-      bodyHtml: hi(name) +
+      bodyHtml:
+        hi(name) +
         `<p style="margin:0 0 14px;">You read ${t} and left real feedback — the kind a writer actually learns from, and the kind we build everything on. Most people scroll. You read, you thought, and you said something true. That matters more than you know.</p>` +
         `<p style="margin:0 0 14px;">Every honest read makes our taste sharper and gives the right scripts a path forward. You just earned XP toward your first perk — and you helped a writer in the process.</p>` +
         `<p style="margin:0 0 8px;">Keep going. The next great film gets made because readers like you showed up.</p>`,
@@ -84,13 +90,16 @@ export function feedbackEmail(name, scriptTitle) {
 }
 
 export function championEmail(name, scriptTitle) {
-  const t = scriptTitle ? `<strong style="color:#fff;">“${esc(scriptTitle)}”</strong>` : 'a screenplay';
+  const t = scriptTitle
+    ? `<strong style="color:#fff;">“${esc(scriptTitle)}”</strong>`
+    : 'a screenplay';
   return {
     subject: 'You championed your first script',
     html: wrap({
       eyebrow: 'Your first champion',
       heading: 'You put your name behind a story. That counts.',
-      bodyHtml: hi(name) +
+      bodyHtml:
+        hi(name) +
         `<p style="margin:0 0 14px;">You championed ${t} — you didn't just like it, you stood up for it. Conviction is rare, and it's exactly what moves a screenplay from a pile to a production. When you champion, we listen.</p>` +
         `<p style="margin:0 0 8px;">Spot the right ones early and back them, and you're not just a reader anymore — you're part of how these films get made.</p>`,
       cta: { text: 'Find your next one', url: `${SITE}/submissions.html` },

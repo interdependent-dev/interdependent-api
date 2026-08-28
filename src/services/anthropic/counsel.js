@@ -119,7 +119,9 @@ export async function askCounsel({ section, subsection, selection, question }) {
   const parts = [
     `SECTION: ${section.title ?? section.id}`,
     subsection ? `THE MEMBER IS ASKING ABOUT SUBSECTION: ${subsection}` : null,
-    selection ? `THE MEMBER SELECTED THIS PASSAGE:\n"""\n${String(selection).slice(0, 4000)}\n"""` : null,
+    selection
+      ? `THE MEMBER SELECTED THIS PASSAGE:\n"""\n${String(selection).slice(0, 4000)}\n"""`
+      : null,
     `THE MEMBER'S QUESTION:\n${String(question).slice(0, 2000)}`,
     `THE SECTION, IN FULL — THIS IS THE ONLY TEXT YOU MAY ANSWER FROM:\n"""\n${section.text}\n"""`,
   ].filter(Boolean);

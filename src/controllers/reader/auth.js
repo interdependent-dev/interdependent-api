@@ -48,7 +48,8 @@ export async function registerBegin(req, res, next) {
   const { firstName, lastName } = parsed.data;
   const email = normalizeEmail(parsed.data.email);
   const handle = buildHandle(firstName, lastName);
-  if (!handle) return next(new AppError('Handle could not be derived from the provided names', 400));
+  if (!handle)
+    return next(new AppError('Handle could not be derived from the provided names', 400));
 
   const displayName = `${firstName} ${lastName}`;
   const tempReaderId = randomUUID();
@@ -100,7 +101,8 @@ export async function registerComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   const { tempReaderId, handle, displayName, email } = stored.metadata ?? {};
   if (!tempReaderId || !handle) {
@@ -111,7 +113,9 @@ export async function registerComplete(req, res, next) {
   try {
     regInfo = await finishRegistration({ credential, expectedChallenge: stored.challenge });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'),
+    );
   }
 
   // Admin/Curator handles are RESERVED — they cannot be self-registered, so a handle
@@ -219,7 +223,8 @@ export async function authComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   // The credential.id or credential.rawId tells us which credential was used
   const credentialId = credential.id;
@@ -238,11 +243,18 @@ export async function authComplete(req, res, next) {
       storedCredential,
     });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 401, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 401, 'passkey_verify_failed'),
+    );
   }
 
-  await updateCredentialCounter({ id: storedCredential.id, counter: authInfo.newCounter }).catch((err) =>
-    logger.warn({ credentialId: storedCredential.id, err }, 'updateCredentialCounter failed (non-fatal)'));
+  await updateCredentialCounter({ id: storedCredential.id, counter: authInfo.newCounter }).catch(
+    (err) =>
+      logger.warn(
+        { credentialId: storedCredential.id, err },
+        'updateCredentialCounter failed (non-fatal)',
+      ),
+  );
 
   // Cross-check userHandle when the browser returned one — it should decode
   // to the reader's UUID (set as userID bytes during registration).
@@ -256,7 +268,9 @@ export async function authComplete(req, res, next) {
       }
     } catch {
       // Malformed userHandle — treat as a verification failure
-      return next(new AppError('Invalid userHandle in credential response', 401, 'passkey_verify_failed'));
+      return next(
+        new AppError('Invalid userHandle in credential response', 401, 'passkey_verify_failed'),
+      );
     }
   }
 

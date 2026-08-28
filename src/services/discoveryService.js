@@ -13,7 +13,9 @@ export const MIN_SHARED = 2;
 export function rankTasteMatches({ readerId, feedback, info, limit = 8 }) {
   const byReader = {};
   (feedback || []).forEach((f) => {
-    const v = String(f.champion_verdict || '').toLowerCase().trim();
+    const v = String(f.champion_verdict || '')
+      .toLowerCase()
+      .trim();
     if (!f.reader_id || !f.script_id || !v) return;
     (byReader[f.reader_id] || (byReader[f.reader_id] = {}))[f.script_id] = v;
   });
@@ -28,10 +30,19 @@ export function rankTasteMatches({ readerId, feedback, info, limit = 8 }) {
     let shared = 0;
     let agreed = 0;
     for (const sid of mineScripts) {
-      if (verdicts[sid]) { shared += 1; if (verdicts[sid] === mine[sid]) agreed += 1; }
+      if (verdicts[sid]) {
+        shared += 1;
+        if (verdicts[sid] === mine[sid]) agreed += 1;
+      }
     }
     if (shared >= MIN_SHARED) {
-      matches.push({ handle: info[rid].handle, name: info[rid].name, shared, agreed, score: agreed / shared });
+      matches.push({
+        handle: info[rid].handle,
+        name: info[rid].name,
+        shared,
+        agreed,
+        score: agreed / shared,
+      });
     }
   }
   // Highest agreement rate first, then more shared reads, then more agreements.
@@ -44,6 +55,8 @@ export async function getTasteMatches(handle, { limit = 8 } = {}) {
   if (!reader) return [];
   const [feedback, readers] = await Promise.all([getFeedbackForXp(), getReaders()]);
   const info = {};
-  (readers || []).forEach((r) => { info[r.id] = { handle: r.handle, name: r.display_name || r.handle }; });
+  (readers || []).forEach((r) => {
+    info[r.id] = { handle: r.handle, name: r.display_name || r.handle };
+  });
   return rankTasteMatches({ readerId: reader.id, feedback, info, limit });
 }

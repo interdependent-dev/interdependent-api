@@ -5,7 +5,12 @@ import { logger } from '../../lib/logger.js';
 import { anthropic, candidateModels, classifyFatal } from './models.js';
 import { extractJson } from './extraction.js';
 import { verifyReadToEnd } from './verification.js';
-import { SYSTEM_PROMPT, TRANSLATION_PROMPT, LOGLINE_PROMPT, RECALIBRATE_PROMPT } from './prompts.js';
+import {
+  SYSTEM_PROMPT,
+  TRANSLATION_PROMPT,
+  LOGLINE_PROMPT,
+  RECALIBRATE_PROMPT,
+} from './prompts.js';
 
 // BARAKA's decision is a deterministic function of Craft Score + Championability.
 // The model is unreliable at walking that branching matrix (it has mislabeled
@@ -16,10 +21,12 @@ import { SYSTEM_PROMPT, TRANSLATION_PROMPT, LOGLINE_PROMPT, RECALIBRATE_PROMPT }
 //   ≤ 70       : HIGH → CONSIDER ; MEDIUM/LOW → PASS
 export function barakaDecision(craftScore, championability) {
   const c = Number(craftScore);
-  const h = String(championability ?? '').trim().toUpperCase();
+  const h = String(championability ?? '')
+    .trim()
+    .toUpperCase();
   if (isNaN(c) || !['HIGH', 'MEDIUM', 'LOW'].includes(h)) return null;
-  if (c > 80) return (h === 'HIGH' || h === 'MEDIUM') ? 'RECOMMEND' : 'CONSIDER';
-  if (c > 70) return h === 'HIGH' ? 'RECOMMEND' : (h === 'MEDIUM' ? 'CONSIDER' : 'PASS');
+  if (c > 80) return h === 'HIGH' || h === 'MEDIUM' ? 'RECOMMEND' : 'CONSIDER';
+  if (c > 70) return h === 'HIGH' ? 'RECOMMEND' : h === 'MEDIUM' ? 'CONSIDER' : 'PASS';
   return h === 'HIGH' ? 'CONSIDER' : 'PASS';
 }
 
@@ -47,9 +54,10 @@ export async function evaluateScreenplay(scriptText) {
   // full script — the third act and ending especially — is essential: structure/
   // climax/ending scores and the summary are worthless on a partial read.
   const MAX_CHARS = 600_000;
-  const scriptForModel = scriptText.length > MAX_CHARS
-    ? scriptText.slice(0, MAX_CHARS) + '\n\n[...exceeded maximum length...]'
-    : scriptText;
+  const scriptForModel =
+    scriptText.length > MAX_CHARS
+      ? scriptText.slice(0, MAX_CHARS) + '\n\n[...exceeded maximum length...]'
+      : scriptText;
 
   const failures = [];
   let fallbackResult = null; // best parsed-but-unverified result, used only if nothing verifies
@@ -103,12 +111,18 @@ export async function evaluateScreenplay(scriptText) {
     }
 
     if (model !== env.anthropicModel.trim()) {
-      logger.warn({ model, pinned: env.anthropicModel }, 'Evaluation completed on fallback model — check ANTHROPIC_MODEL');
+      logger.warn(
+        { model, pinned: env.anthropicModel },
+        'Evaluation completed on fallback model — check ANTHROPIC_MODEL',
+      );
     }
 
     const evaluationJson = extractJson(rawText);
     if (!evaluationJson) {
-      logger.warn({ model, stopReason: response.stop_reason }, 'Model returned unparseable JSON — storing raw text only');
+      logger.warn(
+        { model, stopReason: response.stop_reason },
+        'Model returned unparseable JSON — storing raw text only',
+      );
       fallbackResult = fallbackResult || { rawText, evaluationJson: null, modelUsed: model };
       failures.push(`${model} → unparseable JSON`);
       continue;
@@ -129,7 +143,9 @@ export async function evaluateScreenplay(scriptText) {
   }
 
   if (fallbackResult) {
-    logger.warn('Returning an evaluation flagged read_verified=false — no candidate confirmed reading to the end');
+    logger.warn(
+      'Returning an evaluation flagged read_verified=false — no candidate confirmed reading to the end',
+    );
     return fallbackResult;
   }
   throw new AppError(`Evaluation failed on all models — ${failures.join('; ')}`, 502);
@@ -148,12 +164,17 @@ export async function detectTranslation(scriptText) {
         {
           model,
           max_tokens: 700,
-          system: [{ type: 'text', text: TRANSLATION_PROMPT, cache_control: { type: 'ephemeral' } }],
+          system: [
+            { type: 'text', text: TRANSLATION_PROMPT, cache_control: { type: 'ephemeral' } },
+          ],
           messages: [{ role: 'user', content: `SCREENPLAY EXCERPT:\n\n${sample}` }],
         },
         { timeout: 90_000, maxRetries: 1 },
       );
-      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const text = resp.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
       const json = extractJson(text);
       if (json && typeof json.translated === 'boolean') return json;
     } catch (err) {
@@ -161,7 +182,14 @@ export async function detectTranslation(scriptText) {
       logger.error({ model, err }, 'detectTranslation model call failed');
     }
   }
-  return { translated: false, confidence: 0, original_language: null, severity: 'none', evidence: [], screen_error: true };
+  return {
+    translated: false,
+    confidence: 0,
+    original_language: null,
+    severity: 'none',
+    evidence: [],
+    screen_error: true,
+  };
 }
 
 /**
@@ -171,9 +199,10 @@ export async function detectTranslation(scriptText) {
  */
 export async function generateLogline(scriptText) {
   const MAX_CHARS = 600_000;
-  const scriptForModel = scriptText.length > MAX_CHARS
-    ? scriptText.slice(0, MAX_CHARS) + '\n\n[...exceeded maximum length...]'
-    : scriptText;
+  const scriptForModel =
+    scriptText.length > MAX_CHARS
+      ? scriptText.slice(0, MAX_CHARS) + '\n\n[...exceeded maximum length...]'
+      : scriptText;
 
   const failures = [];
   let fallback = null; // best parsed-but-unverified result
@@ -186,7 +215,9 @@ export async function generateLogline(scriptText) {
           model,
           max_tokens: 1024,
           system: [{ type: 'text', text: LOGLINE_PROMPT, cache_control: { type: 'ephemeral' } }],
-          messages: [{ role: 'user', content: `Here is the full screenplay:\n\n${scriptForModel}` }],
+          messages: [
+            { role: 'user', content: `Here is the full screenplay:\n\n${scriptForModel}` },
+          ],
         },
         { timeout: 180_000, maxRetries: 2 },
       );
@@ -198,7 +229,10 @@ export async function generateLogline(scriptText) {
       continue;
     }
 
-    const rawText = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const rawText = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
     const json = extractJson(rawText);
     if (!json || !json.logline) {
       failures.push(`${model} → no logline`);
@@ -225,21 +259,40 @@ export async function generateLogline(scriptText) {
  * Returns the calibration object; the caller persists it on evaluation_json.
  */
 export async function recalibrateWithFeedback({ title, evaluation, feedback }) {
-  const fbText = (feedback || []).map((f, i) => {
-    const dims = f.dimensions && typeof f.dimensions === 'object'
-      ? Object.entries(f.dimensions).filter(([, v]) => v != null).map(([k, v]) => `${k}: ${v}/5`).join(', ') : '';
-    return `Reader ${i + 1} — verdict: ${f.verdict || 'n/a'}${dims ? `; ratings: ${dims}` : ''}${f.note ? `; note: "${String(f.note).slice(0, 1500)}"` : ''}`;
-  }).join('\n');
+  const fbText = (feedback || [])
+    .map((f, i) => {
+      const dims =
+        f.dimensions && typeof f.dimensions === 'object'
+          ? Object.entries(f.dimensions)
+              .filter(([, v]) => v != null)
+              .map(([k, v]) => `${k}: ${v}/5`)
+              .join(', ')
+          : '';
+      return `Reader ${i + 1} — verdict: ${f.verdict || 'n/a'}${dims ? `; ratings: ${dims}` : ''}${f.note ? `; note: "${String(f.note).slice(0, 1500)}"` : ''}`;
+    })
+    .join('\n');
   const user = `SCREENPLAY: ${title}\n\nAI EVALUATION (JSON):\n${JSON.stringify(evaluation).slice(0, 12000)}\n\nHUMAN READER FEEDBACK (${(feedback || []).length} reader${feedback && feedback.length === 1 ? '' : 's'}):\n${fbText}`;
-  const models = [...new Set([env.anthropicModel.trim(), 'claude-opus-4-8', 'claude-haiku-4-5-20251001'])];
+  const models = [
+    ...new Set([env.anthropicModel.trim(), 'claude-opus-4-8', 'claude-haiku-4-5-20251001']),
+  ];
   let lastErr;
   for (const model of models) {
     try {
       const resp = await anthropic.messages.create(
-        { model, max_tokens: 2000, system: [{ type: 'text', text: RECALIBRATE_PROMPT, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: user }] },
+        {
+          model,
+          max_tokens: 2000,
+          system: [
+            { type: 'text', text: RECALIBRATE_PROMPT, cache_control: { type: 'ephemeral' } },
+          ],
+          messages: [{ role: 'user', content: user }],
+        },
         { timeout: 120_000, maxRetries: 1 },
       );
-      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const text = resp.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
       const json = extractJson(text);
       if (json && json.championability) return json;
       lastErr = new Error('no calibration json');

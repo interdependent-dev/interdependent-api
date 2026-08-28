@@ -2,10 +2,7 @@ import { randomBytes, createHash } from 'crypto';
 import { AppError } from '../../middleware/errorHandler.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
-import {
-  createRegistrationOptions,
-  finishRegistration,
-} from '../../services/passkeyService.js';
+import { createRegistrationOptions, finishRegistration } from '../../services/passkeyService.js';
 import {
   getReaderByHandle,
   getReaderById,
@@ -41,10 +38,11 @@ function siteOrigin() {
 // matched (prevents account / email enumeration).
 const RECOVERY_GENERIC = {
   ok: true,
-  message: 'If that account exists and the email matches the one on file, a recovery link is on its way.',
+  message:
+    'If that account exists and the email matches the one on file, a recovery link is on its way.',
 };
 
-export async function recoverRequest(req, res, next) {
+export async function recoverRequest(req, res, _next) {
   const parsed = recoverRequestSchema.safeParse(req.body);
   // Even malformed input returns the generic message — no enumeration signal.
   if (!parsed.success) return res.json(RECOVERY_GENERIC);
@@ -102,7 +100,9 @@ export async function recoverBegin(req, res, next) {
   if (!parsed.success) return next(new AppError('Invalid recovery link', 400, 'recovery_invalid'));
 
   const { readerId, token } = parsed.data;
-  const { error, row } = await validateRecoveryToken({ readerId, token }).catch(() => ({ error: 'recovery_invalid' }));
+  const { error, row } = await validateRecoveryToken({ readerId, token }).catch(() => ({
+    error: 'recovery_invalid',
+  }));
   if (error) return next(new AppError('This recovery link is no longer valid', 400, error));
 
   const reader = await getReaderById(readerId).catch(() => null);
@@ -139,7 +139,8 @@ export async function recoverBegin(req, res, next) {
 
 export async function recoverComplete(req, res, next) {
   const parsed = recoverCompleteSchema.safeParse(req.body);
-  if (!parsed.success) return next(new AppError('challengeId (UUID) and credential are required', 400));
+  if (!parsed.success)
+    return next(new AppError('challengeId (UUID) and credential are required', 400));
 
   const { challengeId, credential } = parsed.data;
 
@@ -149,19 +150,28 @@ export async function recoverComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   const readerId = stored.metadata?.recoverReaderId;
   const recoveryTokenId = stored.metadata?.recoveryTokenId;
   if (!readerId || !recoveryTokenId) {
-    return next(new AppError('Recovery challenge metadata missing — start recovery again', 400, 'recovery_invalid'));
+    return next(
+      new AppError(
+        'Recovery challenge metadata missing — start recovery again',
+        400,
+        'recovery_invalid',
+      ),
+    );
   }
 
   let regInfo;
   try {
     regInfo = await finishRegistration({ credential, expectedChallenge: stored.challenge });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'),
+    );
   }
 
   // Atomically spend the recovery token — the guarded update returns true only
@@ -172,7 +182,8 @@ export async function recoverComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Recovery token check failed: ${err.message}`, 500));
   }
-  if (!won) return next(new AppError('This recovery link has already been used', 400, 'recovery_used'));
+  if (!won)
+    return next(new AppError('This recovery link has already been used', 400, 'recovery_used'));
 
   try {
     await createCredential({
@@ -186,7 +197,13 @@ export async function recoverComplete(req, res, next) {
     });
   } catch (err) {
     if (/duplicate|unique/i.test(err.message)) {
-      return next(new AppError('That passkey is already registered — try signing in instead.', 409, 'already_registered'));
+      return next(
+        new AppError(
+          'That passkey is already registered — try signing in instead.',
+          409,
+          'already_registered',
+        ),
+      );
     }
     return next(new AppError(`Could not store credential: ${err.message}`, 500));
   }

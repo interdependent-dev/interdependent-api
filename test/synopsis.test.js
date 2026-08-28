@@ -26,7 +26,8 @@ const BARAKA = {
     },
   },
   budget: '$15,000,000',
-  summary: 'SPOILERS: the heroine wins, the villain was her mentor all along, and the ending reveals everything.',
+  summary:
+    'SPOILERS: the heroine wins, the villain was her mentor all along, and the ending reveals everything.',
   logline: LOGLINE,
 };
 
@@ -103,7 +104,10 @@ test('capAtSentence: short text passes through; boundary-less text gets an ellip
 test('extractGenre works on both schemas and fenced strings, defensively', () => {
   assert.equal(extractGenre(BARAKA), 'thriller/mystery');
   assert.equal(extractGenre(CASEY), 'drama');
-  assert.equal(extractGenre(null, '```json\n' + JSON.stringify(BARAKA) + '\n```'), 'thriller/mystery');
+  assert.equal(
+    extractGenre(null, '```json\n' + JSON.stringify(BARAKA) + '\n```'),
+    'thriller/mystery',
+  );
   assert.equal(extractGenre({}), null);
   assert.equal(extractGenre('garbage'), null);
 });

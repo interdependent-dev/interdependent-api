@@ -62,7 +62,9 @@ const counselLimiter = rateLimit({
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'The counsel desk is answering as fast as it can — try again in a few minutes' },
+  message: {
+    error: 'The counsel desk is answering as fast as it can — try again in a few minutes',
+  },
 });
 
 const AskSchema = z.object({
@@ -76,13 +78,17 @@ router.post('/', counselLimiter, requireAuth, async (req, res, next) => {
   const parsed = AskSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    return next(new AppError(`Invalid request — ${first.path.join('.') || 'body'}: ${first.message}`, 400));
+    return next(
+      new AppError(`Invalid request — ${first.path.join('.') || 'body'}: ${first.message}`, 400),
+    );
   }
   const { sectionId, subsection, selection, question } = parsed.data;
 
   const section = sectionFor(sectionId);
   if (!section) {
-    return next(new AppError(`No such section of the agreement: ${sectionId}`, 400, 'unknown_section'));
+    return next(
+      new AppError(`No such section of the agreement: ${sectionId}`, 400, 'unknown_section'),
+    );
   }
 
   /* A subsection the member's own gesture produced must belong to the section

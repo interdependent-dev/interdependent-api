@@ -5,7 +5,9 @@ import { env } from '../../config/env.js';
 // passkey, so normalize it consistently (trim + lowercase) everywhere it's
 // stored or compared.
 export function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
+  return String(email || '')
+    .trim()
+    .toLowerCase();
 }
 
 export function issueActionToken(reader) {

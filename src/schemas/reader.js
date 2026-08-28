@@ -28,7 +28,9 @@ export const authCompleteSchema = z.object({
 
 // ─── Recovery email ──────────────────────────────────────────────────────────
 
-export const setEmailSchema = z.object({ email: z.string().email('A valid email is required').max(254) });
+export const setEmailSchema = z.object({
+  email: z.string().email('A valid email is required').max(254),
+});
 
 // ─── Add a device ────────────────────────────────────────────────────────────
 

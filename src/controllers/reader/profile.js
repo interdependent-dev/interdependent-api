@@ -57,7 +57,11 @@ export async function uploadPhoto(req, res, next) {
   const key = `${reader.id}-${randomBytes(4).toString('hex')}.${ext}`;
 
   try {
-    await uploadReaderAvatar({ path: key, buffer: req.file.buffer, contentType: req.file.mimetype });
+    await uploadReaderAvatar({
+      path: key,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype,
+    });
   } catch (err) {
     return next(new AppError(`Upload failed: ${err.message}`, 500));
   }
@@ -95,7 +99,8 @@ export async function getRecoveryEmail(req, res, next) {
 
 export async function setRecoveryEmail(req, res, next) {
   const parsed = setEmailSchema.safeParse(req.body);
-  if (!parsed.success) return next(new AppError('A valid email is required', 400, 'email_required'));
+  if (!parsed.success)
+    return next(new AppError('A valid email is required', 400, 'email_required'));
 
   const email = normalizeEmail(parsed.data.email);
   try {

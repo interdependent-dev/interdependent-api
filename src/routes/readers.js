@@ -53,7 +53,7 @@ router.post('/credentials/add/complete', requireActionToken, addDeviceComplete);
 // anti-enumeration; begin/complete are gated by the one-time token itself.
 const recoverLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 5,                       // per IP — a real reader needs one or two
+  limit: 5, // per IP — a real reader needs one or two
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many recovery requests — please wait a few minutes and try again' },
@@ -65,7 +65,10 @@ router.post('/recover/complete', recoverComplete);
 // Profile photo — upload/replace this reader's avatar (multipart 'photo').
 // Action-token gated. multer holds the file in memory; surface its size/type
 // errors as a clean 400 rather than a 500.
-const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 3 * 1024 * 1024 } });
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 },
+});
 function photoUpload(req, res, next) {
   avatarUpload.single('photo')(req, res, (err) => {
     if (err) {
@@ -90,7 +93,8 @@ router.get('/list', requireAuth, listTopReaders);
 // finished-read gate) — this endpoint only reports state.
 router.get('/me/assignments', optionalReader, async (req, res, next) => {
   try {
-    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    if (!req.reader?.id)
+      return next(new AppError('Reader session required', 401, 'reader_session_required'));
     const { pending, decided } = await getReaderAssignments(req.reader.id);
     res.set('Cache-Control', 'private, max-age=15');
     res.json({ pending, decided });
@@ -107,7 +111,8 @@ router.get('/me/assignments', optionalReader, async (req, res, next) => {
 // for when peer recs get a real write path.
 router.get('/me/inbox', optionalReader, async (req, res, next) => {
   try {
-    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    if (!req.reader?.id)
+      return next(new AppError('Reader session required', 401, 'reader_session_required'));
     const { pending } = await getReaderAssignments(req.reader.id);
     res.set('Cache-Control', 'private, max-age=15');
     res.json({ items: pending.map((a) => ({ kind: 'assignment', ...a })) });
@@ -136,13 +141,16 @@ router.get('/:handle/xp', async (req, res, next) => {
 router.get('/:handle/taste', optionalReader, async (req, res, next) => {
   try {
     const handle = req.params.handle;
-    const self = req.reader?.handle && req.reader.handle.toLowerCase() === String(handle).toLowerCase();
+    const self =
+      req.reader?.handle && req.reader.handle.toLowerCase() === String(handle).toLowerCase();
     const allowed = self || (await isCuratorHandle(req.reader?.handle));
     if (!allowed) return res.json({ matches: [], canSee: false });
     const matches = await getTasteMatches(handle);
-    res.set('Cache-Control', 'private, max-age=30');  // per-reader result — private cache only
+    res.set('Cache-Control', 'private, max-age=30'); // per-reader result — private cache only
     res.json({ matches, canSee: true });
-  } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
 });
 
 // Public reader profile

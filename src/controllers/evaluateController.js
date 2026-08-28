@@ -5,7 +5,11 @@ import { extractText } from '../services/pdfService.js';
 import { evaluateScreenplay, detectTranslation } from '../services/anthropic/evaluation.js';
 import { verifyRecommendation } from '../services/anthropic/verification.js';
 import { screenplayFormatGate } from '../services/formatGate.js';
-import { sendEvaluationEmail, sendFailureAlert, sendRevisionRequest } from '../services/emailService.js';
+import {
+  sendEvaluationEmail,
+  sendFailureAlert,
+  sendRevisionRequest,
+} from '../services/emailService.js';
 import {
   upsertUser,
   saveScript,
@@ -28,7 +32,15 @@ const submitSchema = z.object({
  * alerts the admin — a submission can never silently vanish.
  * Exported so the retry route can re-run stored submissions.
  */
-export async function runEvaluation({ script, pdfText, name, email, title, pageCount = 0, notify = true }) {
+export async function runEvaluation({
+  script,
+  pdfText,
+  name,
+  email,
+  title,
+  pageCount = 0,
+  notify = true,
+}) {
   try {
     // ── Pre-evaluation gates ──────────────────────────────────────────────────
     // A malformed or clearly-translated submission is REJECTED before it is ever
@@ -39,7 +51,12 @@ export async function runEvaluation({ script, pdfText, name, email, title, pageC
     const fmt = screenplayFormatGate(pdfText, { pageCount });
     if (!fmt.ok) {
       return rejectSubmission({
-        script, name, email, title, notify, kind: 'format',
+        script,
+        name,
+        email,
+        title,
+        notify,
+        kind: 'format',
         reason: fmt.reasons.map((r) => r.detail).join(' '),
         detail: { kind: 'format', reasons: fmt.reasons, metrics: fmt.metrics },
       });
@@ -51,7 +68,12 @@ export async function runEvaluation({ script, pdfText, name, email, title, pageC
     if (tr.translated && tr.severity === 'significant' && (tr.confidence ?? 0) >= 0.85) {
       const lang = tr.original_language ? ` from ${tr.original_language}` : '';
       return rejectSubmission({
-        script, name, email, title, notify, kind: 'translation',
+        script,
+        name,
+        email,
+        title,
+        notify,
+        kind: 'translation',
         reason: `The screenplay reads as a clumsy English translation${lang}${(tr.evidence || []).length ? ` (e.g. ${tr.evidence.slice(0, 3).join('; ')})` : ''}.`,
         detail: { kind: 'translation', ...tr },
       });
@@ -68,7 +90,13 @@ export async function runEvaluation({ script, pdfText, name, email, title, pageC
         if (v.veto) {
           evaluationJson.decision = v.recommended_decision || 'CONSIDER';
           logger.info(
-            { scriptId: script.id, title, verifierModel: v.modelUsed, decision: evaluationJson.decision, reasons: v.reasons || [] },
+            {
+              scriptId: script.id,
+              title,
+              verifierModel: v.modelUsed,
+              decision: evaluationJson.decision,
+              reasons: v.reasons || [],
+            },
             'RECOMMEND vetoed by verifier',
           );
         }
@@ -92,20 +120,28 @@ export async function runEvaluation({ script, pdfText, name, email, title, pageC
         title,
         evaluationJson,
         rawText,
-      }).catch((err) => logger.error({ scriptId: script.id, title, err }, 'Evaluation email failed'));
+      }).catch((err) =>
+        logger.error({ scriptId: script.id, title, err }, 'Evaluation email failed'),
+      );
     }
   } catch (err) {
     const reason = err.message || 'Unknown evaluation error';
     logger.error({ scriptId: script.id, title, err }, 'Script evaluation failed');
     await markScriptError({ id: script.id, reason }).catch((e) =>
-      logger.error({ scriptId: script.id, err: e }, 'markScriptError failed after evaluation failure'));
+      logger.error(
+        { scriptId: script.id, err: e },
+        'markScriptError failed after evaluation failure',
+      ),
+    );
     if (notify) {
       sendFailureAlert({
         title,
         submitterName: name,
         submitterEmail: email,
         reason,
-      }).catch((e) => logger.error({ scriptId: script.id, title, err: e }, 'Failure-alert email failed'));
+      }).catch((e) =>
+        logger.error({ scriptId: script.id, title, err: e }, 'Failure-alert email failed'),
+      );
     }
   }
 }
@@ -116,15 +152,25 @@ export async function runEvaluation({ script, pdfText, name, email, title, pageC
  * resubmit email. A rejection is a content decision, not a server error.
  */
 async function rejectSubmission({ script, name, email, title, notify, kind, reason, detail }) {
-  const message = kind === 'translation'
-    ? `This screenplay reads as a translation into English, so it isn't ready for evaluation yet. Please resubmit it in its original language — our reviewer reads and evaluates every language natively — or in fully idiomatic, professionally edited English.`
-    : `This file isn't in standard screenplay format, so it can't be evaluated yet. ${reason} Re-export your screenplay from screenwriting software as a PDF and resubmit.`;
+  const message =
+    kind === 'translation'
+      ? `This screenplay reads as a translation into English, so it isn't ready for evaluation yet. Please resubmit it in its original language — our reviewer reads and evaluates every language natively — or in fully idiomatic, professionally edited English.`
+      : `This file isn't in standard screenplay format, so it can't be evaluated yet. ${reason} Re-export your screenplay from screenwriting software as a PDF and resubmit.`;
   await markScriptRejected({ id: script.id, reason, detail: { ...detail, message } }).catch((e) =>
-    logger.error({ scriptId: script.id, err: e }, 'markScriptRejected failed'));
+    logger.error({ scriptId: script.id, err: e }, 'markScriptRejected failed'),
+  );
   logger.info({ scriptId: script.id, title, kind, reason }, 'Script REJECTED pre-evaluation');
   if (notify) {
-    sendRevisionRequest({ submitterName: name, submitterEmail: email, title, kind, message, reason })
-      .catch((err) => logger.error({ scriptId: script.id, title, err }, 'Revision-request email failed'));
+    sendRevisionRequest({
+      submitterName: name,
+      submitterEmail: email,
+      title,
+      kind,
+      message,
+      reason,
+    }).catch((err) =>
+      logger.error({ scriptId: script.id, title, err }, 'Revision-request email failed'),
+    );
   }
 }
 
@@ -188,7 +234,10 @@ export async function submitAndEvaluate(req, res, next) {
     });
     await updateScriptStoragePath({ id: script.id, storagePath });
   } catch (err) {
-    (req.log || logger).warn({ scriptId: script.id, err }, 'PDF upload to storage failed (non-fatal)');
+    (req.log || logger).warn(
+      { scriptId: script.id, err },
+      'PDF upload to storage failed (non-fatal)',
+    );
   }
 
   res.status(202).json({
@@ -200,6 +249,14 @@ export async function submitAndEvaluate(req, res, next) {
     charCount: pdfData.charCount,
   });
 
-  runEvaluation({ script, pdfText: pdfData.text, name, email, title, pageCount: pdfData.pageCount })
-    .catch((err) => logger.error({ scriptId: script.id, title, err }, 'background runEvaluation failed'));
+  runEvaluation({
+    script,
+    pdfText: pdfData.text,
+    name,
+    email,
+    title,
+    pageCount: pdfData.pageCount,
+  }).catch((err) =>
+    logger.error({ scriptId: script.id, title, err }, 'background runEvaluation failed'),
+  );
 }

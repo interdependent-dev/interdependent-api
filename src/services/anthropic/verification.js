@@ -8,11 +8,14 @@ import { VERIFIER_PROMPT } from './prompts.js';
 // Unicode-aware: fold accents/diacritics, keep letters & numbers of ANY script
 // (Latin, Cyrillic, CJK, Arabic, etc.), drop everything else. Critical for
 // verifying non-English screenplays — the old [a-z0-9] form deleted them entirely.
-const normForMatch = (s) => (s || '')
-  .toLowerCase()
-  .normalize('NFD').replace(/\p{M}+/gu, '')
-  .replace(/[^\p{L}\p{N}]+/gu, ' ')
-  .replace(/\s+/g, ' ').trim();
+const normForMatch = (s) =>
+  (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 // Confirm the model actually read to the end before we trust its scores or summary.
 // Its verbatim ending quote must appear in the back of the script; an early stop or
@@ -70,11 +73,19 @@ export async function verifyRecommendation(scriptText, evaluationJson) {
           model,
           max_tokens: 900,
           system: [{ type: 'text', text: VERIFIER_PROMPT, cache_control: { type: 'ephemeral' } }],
-          messages: [{ role: 'user', content: `PRIMARY EVALUATION (the RECOMMEND to check):\n${evalSummary}\n\nSCREENPLAY:\n\n${sample}` }],
+          messages: [
+            {
+              role: 'user',
+              content: `PRIMARY EVALUATION (the RECOMMEND to check):\n${evalSummary}\n\nSCREENPLAY:\n\n${sample}`,
+            },
+          ],
         },
         { timeout: 180_000, maxRetries: 1 },
       );
-      const text = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      const text = resp.content
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
       const json = extractJson(text);
       if (json && typeof json.veto === 'boolean') return { ...json, modelUsed: model };
     } catch (err) {
@@ -82,5 +93,11 @@ export async function verifyRecommendation(scriptText, evaluationJson) {
       logger.error({ model, err }, 'verifyRecommendation model call failed');
     }
   }
-  return { veto: false, recommended_decision: 'RECOMMEND', severity: 'none', reasons: [], verifier_error: true };
+  return {
+    veto: false,
+    recommended_decision: 'RECOMMEND',
+    severity: 'none',
+    reasons: [],
+    verifier_error: true,
+  };
 }

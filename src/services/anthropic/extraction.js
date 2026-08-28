@@ -3,7 +3,9 @@
 function firstBalancedObject(s) {
   const start = s.indexOf('{');
   if (start === -1) return null;
-  let depth = 0, inStr = false, esc = false;
+  let depth = 0,
+    inStr = false,
+    esc = false;
   for (let i = start; i < s.length; i++) {
     const ch = s[i];
     if (inStr) {
@@ -18,9 +20,18 @@ function firstBalancedObject(s) {
 }
 
 export function extractJson(text) {
-  const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  const stripped = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
   const noTrailingCommas = (x) => x.replace(/,(\s*[}\]])/g, '$1');
-  const tryParse = (x) => { try { return JSON.parse(x); } catch { return undefined; } };
+  const tryParse = (x) => {
+    try {
+      return JSON.parse(x);
+    } catch {
+      return undefined;
+    }
+  };
 
   let r = tryParse(stripped);
   if (r !== undefined) return r;

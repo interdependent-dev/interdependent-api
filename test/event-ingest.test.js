@@ -8,7 +8,8 @@ import { sanitizeReadEvent, EVENT_TYPES } from '../src/lib/eventIngest.js';
 // Satisfy src/config/env.js for the route-wiring test (validates process.env).
 process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-dummy';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
+process.env.SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
 process.env.SUBMISSION_PASSCODE = process.env.SUBMISSION_PASSCODE || '0000';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dummy-jwt-secret-sixteen-plus';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_dummy';
@@ -20,7 +21,11 @@ const VERIFIED = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 
 // ── the security property: body reader_id is never trusted ───────────────────
 test('a forged body reader_id is IGNORED — anonymous without a session', () => {
-  const out = sanitizeReadEvent({ event_type: 'read_progress', script_id: SCRIPT, reader_id: FORGED });
+  const out = sanitizeReadEvent({
+    event_type: 'read_progress',
+    script_id: SCRIPT,
+    reader_id: FORGED,
+  });
   assert.ok(out, 'event is still accepted (anonymous analytics)');
   assert.equal(out.readerId, null, 'no session → no reader attribution, whatever the body says');
 });
@@ -59,7 +64,10 @@ test('free text is control-char-stripped and length-capped', () => {
 
 test('numbers are clamped and floored; absent fields stay null', () => {
   const out = sanitizeReadEvent({
-    event_type: 'read_progress', depth_pct: 250, seconds: -5, page: 3.7,
+    event_type: 'read_progress',
+    depth_pct: 250,
+    seconds: -5,
+    page: 3.7,
   });
   assert.equal(out.depthPct, 100);
   assert.equal(out.seconds, 0);

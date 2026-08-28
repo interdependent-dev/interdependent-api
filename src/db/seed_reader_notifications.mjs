@@ -16,14 +16,18 @@ import { getFeedbackForXp, getChampions, claimNotification } from '../services/s
 import { logger } from '../lib/logger.js';
 
 const [readers, feedback, champions] = await Promise.all([
-  getAllReaderXp(), getFeedbackForXp(), getChampions(),
+  getAllReaderXp(),
+  getFeedbackForXp(),
+  getChampions(),
 ]);
 
 const hasFeedback = new Set(feedback.filter((f) => f.reader_id).map((f) => f.reader_id));
 const hasChampion = new Set(champions.filter((c) => c.reader_id).map((c) => c.reader_id));
 
 let seeded = 0;
-const bump = async (id, kind, ref) => { if (await claimNotification(id, kind, ref)) seeded += 1; };
+const bump = async (id, kind, ref) => {
+  if (await claimNotification(id, kind, ref)) seeded += 1;
+};
 
 for (const id of hasFeedback) await bump(id, 'first_feedback', '');
 for (const id of hasChampion) await bump(id, 'first_champion', '');
@@ -34,7 +38,12 @@ for (const r of readers) {
 }
 
 logger.info(
-  { seeded, readers: readers.length, withFeedback: hasFeedback.size, withChampions: hasChampion.size },
+  {
+    seeded,
+    readers: readers.length,
+    withFeedback: hasFeedback.size,
+    withChampions: hasChampion.size,
+  },
   'Seeded notification claims — re-running is safe',
 );
 process.exit(0);

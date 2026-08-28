@@ -5,7 +5,8 @@ import { env } from '../config/env.js';
 // Length-independent timing-safe string compare (the prior `!==` short-circuited,
 // so the "constant-time" comment was false). Rate-limited upstream; defence in depth.
 function timingSafeEqualStr(a, b) {
-  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
+  const ba = Buffer.from(String(a)),
+    bb = Buffer.from(String(b));
   if (ba.length !== bb.length) return false;
   return crypto.timingSafeEqual(ba, bb);
 }

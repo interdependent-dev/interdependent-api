@@ -1,5 +1,6 @@
 // READ-ONLY: confirm the email/recovery migration is live before/after deploy.
-// Run:  node --env-file=.env _verify_auth_migration.mjs
+// Safe to re-run any time; writes nothing.
+// Run:  node --env-file=.env scripts/_verify_auth_migration.mjs
 //
 // NB: uses non-head selects on purpose — a `head:true` request does NOT surface
 // PostgREST's PGRST205 "table missing" error, so it gives false positives.

@@ -1,4 +1,7 @@
-// READ-ONLY: current state of the accounts involved in the migration.
+// READ-ONLY: current state of the accounts involved in the 2026-06 account
+// migration (handles, passkeys, read_events, leaderboard rows). Safe to re-run
+// any time; writes nothing.
+//   node --env-file=.env scripts/_state.mjs
 import { createClient } from '@supabase/supabase-js';
 const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },

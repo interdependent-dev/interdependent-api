@@ -1,7 +1,8 @@
-// Backfill recovery emails for the readers who registered before the email
-// field existed. DRY-RUN by default; set APPLY=1 to write.
-//   Preview:  node --env-file=.env _backfill_reader_emails.mjs
-//   Apply:    APPLY=1 node --env-file=.env _backfill_reader_emails.mjs
+// ONE-TIME backfill of recovery emails for the readers who registered before
+// the email field existed. DRY-RUN by default; set APPLY=1 to write. Re-running
+// is harmless (already-set addresses are skipped) but pointless once done.
+//   Preview:  node --env-file=.env scripts/_backfill_reader_emails.mjs
+//   Apply:    APPLY=1 node --env-file=.env scripts/_backfill_reader_emails.mjs
 //
 // Fill in the addresses below (leave blank to skip a reader). Until a reader has
 // an email on file, account recovery is unavailable to them.

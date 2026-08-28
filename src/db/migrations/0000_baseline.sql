@@ -1,5 +1,8 @@
--- Run this in the Supabase SQL editor before deploying.
--- Also create a Storage bucket named "scripts" (private) in the Supabase dashboard.
+-- 0000_baseline: the full schema as of 2026-07 (formerly src/db/schema.sql).
+-- Applied by scripts/migrate.mjs like any other migration. Every statement is
+-- idempotent, so the later per-feature migrations re-applying on top is safe.
+-- Storage buckets are NOT created by SQL: create "scripts" (private) and
+-- "reader-avatars" (public) in the Supabase dashboard or via the storage API.
 
 CREATE TABLE IF NOT EXISTS users (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

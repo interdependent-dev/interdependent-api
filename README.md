@@ -20,7 +20,9 @@ One request flows **routes → controllers → services → Supabase**:
 - `src/routes/` — route definitions and per-route middleware/validation.
 - `src/controllers/` — request/response orchestration.
 - `src/services/` — the actual work: `supabaseService` (DB access via the
-  service-role client), `anthropicService` (Claude evaluation),
+  service-role client), `anthropic/` (Claude evaluation, split by concern:
+  models/fallback, prompts, extraction, verification, evaluation pipeline,
+  email translation, counsel desk),
   `pdfService`/`formatGate` (PDF extraction and screenplay-format gating),
   `passkeyService` (WebAuthn), `emailService`/`xpEmailService` (Resend),
   plus reader/leaderboard/assignment/chat/discovery services.

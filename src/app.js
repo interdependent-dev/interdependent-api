@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { corsMiddleware } from './middleware/cors.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
-import { pingModel, candidateModels } from './services/anthropicService.js';
+import { pingModel, candidateModels } from './services/anthropic/models.js';
 import authRouter from './routes/auth.js';
 import evaluateRouter from './routes/evaluate.js';
 import scriptsRouter from './routes/scripts.js';

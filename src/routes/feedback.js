@@ -15,7 +15,7 @@ import {
   getScriptPageCount,
 } from '../services/supabaseService.js';
 import { isFinishedRead } from '../lib/readGate.js';
-import { recalibrateWithFeedback } from '../services/anthropicService.js';
+import { recalibrateWithFeedback } from '../services/anthropic/evaluation.js';
 import { notifyReaderActivity } from '../services/xpEmailService.js';
 import { markAssignmentDecided } from '../services/assignmentService.js';
 import { AppError } from '../middleware/errorHandler.js';

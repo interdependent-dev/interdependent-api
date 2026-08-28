@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 import { env } from '../config/env.js';
-import { translateEmail } from './anthropicService.js';
+import { translateEmail } from './anthropic/email.js';
 import { logger } from '../lib/logger.js';
 
 const resend = new Resend(env.resendApiKey);

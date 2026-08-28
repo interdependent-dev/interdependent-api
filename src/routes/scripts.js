@@ -16,7 +16,7 @@ import {
 } from '../services/supabaseService.js';
 import { extractText } from '../services/pdfService.js';
 import { runEvaluation } from '../controllers/evaluateController.js';
-import { generateLogline } from '../services/anthropicService.js';
+import { generateLogline } from '../services/anthropic/evaluation.js';
 import { extractSynopsis, extractGenre } from '../lib/evalSynopsis.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../lib/logger.js';

@@ -556,7 +556,7 @@ const RECOVERY_GENERIC = {
   message: 'If that account exists and the email matches the one on file, a recovery link is on its way.',
 };
 
-export async function recoverRequest(req, res, next) {
+export async function recoverRequest(req, res, _next) {
   const parsed = recoverRequestSchema.safeParse(req.body);
   // Even malformed input returns the generic message — no enumeration signal.
   if (!parsed.success) return res.json(RECOVERY_GENERIC);

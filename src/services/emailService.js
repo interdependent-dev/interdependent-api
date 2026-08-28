@@ -26,12 +26,6 @@ const DECISION_COLORS = {
   PASS:      { bg: '#dc2626', label: 'PASS'       },
 };
 
-function scoreBar(score) {
-  const filled = Math.round(score);
-  const blocks = '█'.repeat(filled) + '░'.repeat(10 - filled);
-  return `${blocks} ${score}/10`;
-}
-
 // Two evaluators have shipped: "Casey" (6 categories → weighted_score, comps,
 // summary) and "BARAKA" (7 craft categories → final_craft_score, plus a separate
 // Championability HIGH/MED/LOW axis). Collapse either into one render shape.

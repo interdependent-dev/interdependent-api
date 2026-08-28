@@ -3,8 +3,6 @@ import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../lib/logger.js';
 
-const { RateLimitError, AuthenticationError, APIConnectionTimeoutError } = Anthropic;
-
 const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
 
 const SYSTEM_PROMPT = `You are a professional story analyst at a major Hollywood studio. Your job is to evaluate screenplays based on a strict rubric and return a structured JSON evaluation. Your response must follow the evaluation framework precisely and adhere to the scoring guidelines provided. Return only JSON. No explanations, just JSON.

@@ -20,6 +20,7 @@ export const EVENT_TYPES = new Set([
 const num = (x, lo, hi) => (Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : null);
 // Free-text from the PUBLIC ingest — strip control chars so it's clean at rest,
 // independent of whether every future render sink remembers to HTML-escape it.
+// eslint-disable-next-line no-control-regex -- the control-char range is the point
 const clean = (s, n) => (typeof s === 'string' ? s.replace(/[\x00-\x1f\x7f]/g, '').slice(0, n) : null);
 
 export function sanitizeReadEvent(body, readerId = null) {

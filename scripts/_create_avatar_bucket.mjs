@@ -1,5 +1,6 @@
-// Create the public 'reader-avatars' storage bucket (idempotent).
-//   node --env-file=.env _create_avatar_bucket.mjs
+// Create the public 'reader-avatars' storage bucket. Idempotent — safe to
+// re-run (reports "bucket already exists" and verifies its settings).
+//   node --env-file=.env scripts/_create_avatar_bucket.mjs
 import { createClient } from '@supabase/supabase-js';
 const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 

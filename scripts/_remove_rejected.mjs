@@ -1,3 +1,9 @@
+// ONE-TIME purge of rejected submissions (2026-06-28): backs up their rows,
+// read_events and PDFs to a local folder, then deletes the storage objects and
+// script rows. DESTRUCTIVE — dry-run (backup only) by default; APPLY=1 deletes.
+// Do not re-run casually: the backup DIR path is hardcoded and date-stamped.
+//   Preview:  node --env-file=.env scripts/_remove_rejected.mjs
+//   Apply:    APPLY=1 node --env-file=.env scripts/_remove_rejected.mjs
 import { createClient } from '@supabase/supabase-js';
 import { writeFileSync, mkdirSync } from 'fs';
 import { basename } from 'path';

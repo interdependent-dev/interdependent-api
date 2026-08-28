@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-const envSchema = z.object({
+// Exported so test/envExample.test.js can assert .env.example covers every key.
+export const envSchema = z.object({
   PORT: z.string().default('3001'),
   ANTHROPIC_API_KEY: z.string().min(1, 'ANTHROPIC_API_KEY is required'),
   SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
@@ -23,6 +24,10 @@ const envSchema = z.object({
   // Only include handles that are ALREADY registered (an unregistered admin handle is
   // squattable → add michael-lin here AFTER he creates his account).
   ADMIN_HANDLES: z.string().default('christopher-amell,abhinav-vadhera'),
+  // Featured (Carrier) script for the event perk gate: an explicit id wins;
+  // otherwise xpService falls back to a title-substring match.
+  FEATURED_SCRIPT_ID: z.string().optional(),
+  FEATURED_SCRIPT_TITLE: z.string().default('carrier'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -59,7 +64,22 @@ export const env = {
   adminHandles: new Set(
     parsed.data.ADMIN_HANDLES.split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
   ),
+  featuredScriptId: parsed.data.FEATURED_SCRIPT_ID,
+  featuredScriptTitle: parsed.data.FEATURED_SCRIPT_TITLE,
 };
+
+// JWT_SECRET must be a real random secret, not a template placeholder. Names the
+// variable only — never prints the value.
+if (/change[-_ ]?me|placeholder|your[-_ ]?secret/i.test(parsed.data.JWT_SECRET)) {
+  console.error(
+    'JWT_SECRET looks like a placeholder (e.g. "change-me…"). ' +
+    'Set a real random secret: openssl rand -hex 32',
+  );
+  if (process.env.NODE_ENV === 'production') {
+    console.error('Refusing to start in production with a placeholder JWT_SECRET.');
+    process.exit(1);
+  }
+}
 
 if (process.env.ANTHROPIC_MODEL && process.env.ANTHROPIC_MODEL.trim() !== env.anthropicModel) {
   console.warn(

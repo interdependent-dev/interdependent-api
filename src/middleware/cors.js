@@ -1,18 +1,17 @@
 import cors from 'cors';
 import { env } from '../config/env.js';
 
-const allowedOrigins = new Set(env.corsOrigins);
+// The Cloudflare Pages fallback host (adopted during the GH Pages outage; the
+// canonical domain now serves from Cloudflare). Named exactly — hashed deploy
+// previews (<hash>.interdependent-studio.pages.dev) are NOT allowed; if one
+// ever needs API access, add its full origin to CORS_ORIGINS instead.
+const PAGES_FALLBACK_ORIGIN = 'https://interdependent-studio.pages.dev';
 
-// Temporary preview hosting: while the production domain is served from the
-// Cloudflare Pages project `interdependent-studio` (a GitHub-Pages-outage
-// fallback), allow its *.pages.dev origins too. Safe to keep — these are our own
-// deploy previews; remove once the canonical domain is back on its normal host.
-function isAllowedOrigin(origin) {
-  if (allowedOrigins.has(origin)) return true;
-  try {
-    const h = new URL(origin).hostname;
-    return h === 'interdependent-studio.pages.dev' || h.endsWith('.interdependent-studio.pages.dev');
-  } catch { return false; }
+const allowedOrigins = new Set([...env.corsOrigins, PAGES_FALLBACK_ORIGIN]);
+
+// Exported for test/cors.test.js.
+export function isAllowedOrigin(origin) {
+  return allowedOrigins.has(origin);
 }
 
 export const corsMiddleware = cors({

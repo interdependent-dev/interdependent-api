@@ -74,10 +74,10 @@ function shapeReader(stats, reader) {
 // FEATURED_SCRIPT_TITLE (default "carrier"), else null (gate falls back to
 // any-read/any-feedback in the aggregator).
 function resolveFeaturedScriptId(scripts) {
-  if (process.env.FEATURED_SCRIPT_ID) return process.env.FEATURED_SCRIPT_ID;
+  if (env.featuredScriptId) return env.featuredScriptId;
   // Substring match (no RegExp → no metacharacter throw on a bad env value), and a
   // deterministic tie-break so the pick is stable when several titles match.
-  const needle = String(process.env.FEATURED_SCRIPT_TITLE || 'carrier').toLowerCase();
+  const needle = env.featuredScriptTitle.toLowerCase();
   const hits = (scripts || []).filter((s) => String(s.title || '').toLowerCase().includes(needle));
   if (!hits.length) return null;
   hits.sort((a, b) => String(a.id).localeCompare(String(b.id)));

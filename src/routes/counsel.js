@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { askCounsel } from '../services/anthropicService.js';
+import { askCounsel } from '../services/anthropic/counsel.js';
 import { sectionFor, OA_VERSION, OA_SOURCE_SHA256 } from '../lib/oaSections.js';
 
 const router = Router();

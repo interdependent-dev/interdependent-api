@@ -52,7 +52,7 @@ export const env = {
   corsOrigins: parsed.data.CORS_ORIGINS.split(',').map((o) => o.trim()),
   // Operator decision (Chris, 2026-06-10): Sonnet is the evaluation model,
   // pinned in code so a stale dashboard env var can't override it. To change
-  // models, edit this line; fallbacks live in anthropicService.js.
+  // models, edit this line; fallbacks live in services/anthropic/models.js.
   anthropicModel: 'claude-sonnet-4-6',
   resendApiKey: parsed.data.RESEND_API_KEY,
   emailFrom: parsed.data.EMAIL_FROM,

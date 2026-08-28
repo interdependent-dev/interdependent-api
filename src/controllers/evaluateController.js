@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../lib/logger.js';
 import { extractText } from '../services/pdfService.js';
-import { evaluateScreenplay, detectTranslation, verifyRecommendation } from '../services/anthropicService.js';
+import { evaluateScreenplay, detectTranslation } from '../services/anthropic/evaluation.js';
+import { verifyRecommendation } from '../services/anthropic/verification.js';
 import { screenplayFormatGate } from '../services/formatGate.js';
 import { sendEvaluationEmail, sendFailureAlert, sendRevisionRequest } from '../services/emailService.js';
 import {

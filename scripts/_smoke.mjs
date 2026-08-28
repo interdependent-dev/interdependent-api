@@ -1,7 +1,8 @@
-// Live prod smoke test of the email/recovery/add-device feature.
-//   node --env-file=.env _smoke.mjs
-// Uses the public API + service_role (for setup/inspect/cleanup). Creates a
-// throwaway reader and deletes it at the end. No real authenticator needed —
+// Live prod smoke test of the email/recovery/add-device feature. Safe to
+// re-run: it creates a uniquely-named throwaway reader and deletes it at the
+// end (hits the LIVE Render API + Supabase, so expect real token rows briefly).
+//   node --env-file=.env scripts/_smoke.mjs
+// Uses the public API + service_role (for setup/inspect/cleanup). No real authenticator needed —
 // the WebAuthn ceremony is shared, already-proven code; this exercises the NEW
 // paths: email capture, recovery-token lifecycle, and auth gating.
 import { createClient } from '@supabase/supabase-js';

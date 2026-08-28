@@ -1,8 +1,11 @@
-// Local preview server (untracked helper — NOT committed). Real Supabase creds
+// Local XP-page preview server. Safe to re-run (read-only against Supabase;
+// serves on :3001 until killed). NB: the API path below is hardcoded to the
+// author's machine — point it at your checkout before use. Real Supabase creds
 // from .env; throwaway values for the schema-required vars the XP read path
 // doesn't use; CORS opened to the local static server. A tiny /xp/_previewtoken
 // route mints a portal token so the preview page can read the gated leaderboard
-// without a passcode. Listens on :3001.
+// without a passcode.
+//   node scripts/_xp_serve.mjs
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';

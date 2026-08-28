@@ -32,5 +32,5 @@ if (ok) {
   }
 }
 
-console.log(ok ? '\nMIGRATION OK' : '\nMIGRATION INCOMPLETE — run src/db/migrations/2026-06-28_reader_email_recovery.sql in the Supabase SQL editor');
+console.log(ok ? '\nMIGRATION OK' : '\nMIGRATION INCOMPLETE — apply src/db/migrations/202606281000_reader_email_recovery.sql via scripts/migrate.mjs');
 process.exit(ok ? 0 : 1);

@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { validateQuery } from '../middleware/validate.js';
 import { listReadEvents, getScriptTitles, getReaders, getChampions } from '../services/supabaseService.js';
 import { getAllReaderXp } from '../services/xpService.js';
 import { isFinishedRead } from '../lib/readGate.js';
@@ -175,9 +177,13 @@ function scriptDetail(id, events, scripts, readers, champions) {
   };
 }
 
-router.get('/summary', async (req, res, next) => {
+const summaryQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(90),
+});
+
+router.get('/summary', validateQuery(summaryQuerySchema), async (req, res, next) => {
   try {
-    const days = Math.min(parseInt(req.query.days ?? '90', 10) || 90, 365);
+    const { days } = req.query;
     const sinceISO = new Date(Date.now() - days * 864e5).toISOString();
     const [events, scripts, readers, champions] = await Promise.all([
       listReadEvents({ sinceISO }), getScriptTitles(), getReaders(), getChampions(),

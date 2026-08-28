@@ -19,7 +19,10 @@ export async function extractText(buffer) {
   const text = result.text?.trim() ?? '';
 
   if (!text) {
-    throw new AppError('PDF appears to contain no extractable text (it may be image-based or encrypted)', 422);
+    throw new AppError(
+      'PDF appears to contain no extractable text (it may be image-based or encrypted)',
+      422,
+    );
   }
 
   const wordCount = text.split(/\s+/).filter(Boolean).length;

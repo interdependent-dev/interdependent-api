@@ -6,25 +6,46 @@
 // Fill in the addresses below (leave blank to skip a reader). Until a reader has
 // an email on file, account recovery is unavailable to them.
 import { createClient } from '@supabase/supabase-js';
-const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 const APPLY = process.env.APPLY === '1';
 
 const EMAILS = {
-  'christopher-amell': '',   // Chris
-  'macie-meredith':    '',   // Macie
-  'zachary-baskin':    '',   // Zach
+  'christopher-amell': '', // Chris
+  'macie-meredith': '', // Macie
+  'zachary-baskin': '', // Zach
 };
 
-const norm = (e) => String(e || '').trim().toLowerCase();
+const norm = (e) =>
+  String(e || '')
+    .trim()
+    .toLowerCase();
 console.log(`\n=== Backfill reader emails ${APPLY ? '(APPLY — writing)' : '(DRY RUN)'} ===`);
 
 for (const [handle, raw] of Object.entries(EMAILS)) {
   const email = norm(raw);
-  const { data: reader, error } = await db.from('readers').select('id, handle, email').eq('handle', handle).maybeSingle();
-  if (error) { console.log(`  ? ${handle}: lookup error ${error.message}`); continue; }
-  if (!reader) { console.log(`  ✗ ${handle}: no such reader`); continue; }
-  if (!email) { console.log(`  – ${handle}: (no email provided — skipped; current: ${reader.email || 'none'})`); continue; }
-  if (norm(reader.email) === email) { console.log(`  = ${handle}: already ${email}`); continue; }
+  const { data: reader, error } = await db
+    .from('readers')
+    .select('id, handle, email')
+    .eq('handle', handle)
+    .maybeSingle();
+  if (error) {
+    console.log(`  ? ${handle}: lookup error ${error.message}`);
+    continue;
+  }
+  if (!reader) {
+    console.log(`  ✗ ${handle}: no such reader`);
+    continue;
+  }
+  if (!email) {
+    console.log(`  – ${handle}: (no email provided — skipped; current: ${reader.email || 'none'})`);
+    continue;
+  }
+  if (norm(reader.email) === email) {
+    console.log(`  = ${handle}: already ${email}`);
+    continue;
+  }
 
   if (APPLY) {
     const { error: uerr } = await db.from('readers').update({ email }).eq('id', reader.id);

@@ -19,7 +19,10 @@ async function resolveReader(handle, next) {
     next(new AppError(err.message, 500));
     return null;
   }
-  if (!reader) { next(new AppError('Reader not found', 404, 'reader_not_found')); return null; }
+  if (!reader) {
+    next(new AppError('Reader not found', 404, 'reader_not_found'));
+    return null;
+  }
   return reader;
 }
 
@@ -73,7 +76,10 @@ export async function addScript(req, res, next) {
   if (!script) return next(new AppError('Script not found', 404));
 
   const existing = await getLeaderboardEntry(reader.id, scriptId).catch(() => null);
-  if (existing) return next(new AppError('Script is already on this leaderboard', 409, 'already_on_leaderboard'));
+  if (existing)
+    return next(
+      new AppError('Script is already on this leaderboard', 409, 'already_on_leaderboard'),
+    );
 
   try {
     await addToLeaderboard(reader.id, scriptId);
@@ -84,7 +90,12 @@ export async function addScript(req, res, next) {
   const entries = await getLeaderboardByReaderId(reader.id);
   res.status(201).json(formatLeaderboard(reader, entries));
   // fire-and-forget: a first-champion thank-you + any newly-unlocked perk emails.
-  notifyReaderActivity({ readerId: reader.id, handle: reader.handle, kind: 'champion', scriptTitle: script.title });
+  notifyReaderActivity({
+    readerId: reader.id,
+    handle: reader.handle,
+    kind: 'champion',
+    scriptTitle: script.title,
+  });
 }
 
 // DELETE /leaderboard/:handle/scripts/:scriptId  — requires actionToken
@@ -118,7 +129,8 @@ export async function reorderScripts(req, res, next) {
   }
 
   const parsed = z.object({ scriptIds: z.array(z.string().uuid()).min(1) }).safeParse(req.body);
-  if (!parsed.success) return next(new AppError('scriptIds must be a non-empty array of UUIDs', 400));
+  if (!parsed.success)
+    return next(new AppError('scriptIds must be a non-empty array of UUIDs', 400));
 
   try {
     await reorderLeaderboard(reader.id, parsed.data.scriptIds);

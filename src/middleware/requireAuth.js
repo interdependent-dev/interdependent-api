@@ -22,11 +22,15 @@ export function requireAuth(req, res, next) {
     // (reader_session / leaderboard_action) — signed with the same secret but carrying a
     // `purpose` — if they're replayed here as Authorization to skip the passcode gate.
     if (payload.authenticated !== true) {
-      return res.status(401).json({ error: 'Invalid or expired session — please re-enter the passcode' });
+      return res
+        .status(401)
+        .json({ error: 'Invalid or expired session — please re-enter the passcode' });
     }
     req.auth = payload;
     next();
   } catch {
-    return res.status(401).json({ error: 'Invalid or expired session — please re-enter the passcode' });
+    return res
+      .status(401)
+      .json({ error: 'Invalid or expired session — please re-enter the passcode' });
   }
 }

@@ -56,7 +56,10 @@ export const EARLY_CHAMPION_RANK = 3;
 
 // Max XP a single feedback row can earn (base + dims + notes + voice).
 export const FEEDBACK_MAX =
-  ACTIONS.feedbackBase + ACTIONS.feedbackDimensionsCap + ACTIONS.feedbackNotes + ACTIONS.feedbackVoice;
+  ACTIONS.feedbackBase +
+  ACTIONS.feedbackDimensionsCap +
+  ACTIONS.feedbackNotes +
+  ACTIONS.feedbackVoice;
 
 // The perk ladder = the MILESTONES along the bar. `min` = XP threshold; `gate` =
 // the spread of real actions also required to UNLOCK the reward (XP alone can't
@@ -123,7 +126,11 @@ export const LEVELS = [
     // COMPETITIVE: reaching this tier makes you ELIGIBLE; the actual screen credit
     // is scarce and decided per film (see CREDIT_* below).
     competitive: true,
-    reward: { icon: 'credit', label: 'Screen-credit eligibility — “Story Scout”', note: 'Top contributors per film — limited slots' },
+    reward: {
+      icon: 'credit',
+      label: 'Screen-credit eligibility — “Story Scout”',
+      note: 'Top contributors per film — limited slots',
+    },
   },
 ];
 
@@ -233,18 +240,73 @@ export function scoreReader(stats = {}) {
   };
 
   const breakdown = [
-    { action: 'read', label: 'Verified reads', count: s.verifiedReads, xp: s.verifiedReads * ACTIONS.read },
+    {
+      action: 'read',
+      label: 'Verified reads',
+      count: s.verifiedReads,
+      xp: s.verifiedReads * ACTIONS.read,
+    },
     { action: 'feedback', label: 'Feedback', count: s.feedbacks, xp: s.feedbackXp },
-    { action: 'champion', label: 'Champions', count: s.champions, xp: s.champions * ACTIONS.champion },
-    { action: 'recommendOpened', label: 'Recommends opened', count: s.recsOpened, xp: s.recsOpened * ACTIONS.recommendOpened },
-    { action: 'recommendLanded', label: 'Recommends landed', count: s.recsLanded, xp: s.recsLanded * ACTIONS.recommendLanded },
-    { action: 'recommendToChampion', label: 'Recommend → champion', count: s.recsConverted, xp: s.recsConverted * ACTIONS.recommendToChampion },
-    { action: 'earlySpot', label: 'Early spots', count: s.earlySpots, xp: s.earlySpots * ACTIONS.earlySpot },
-    { action: 'earlyOpinionSpot', label: 'First opinions', count: s.earlyOpinions, xp: s.earlyOpinions * ACTIONS.earlyOpinionSpot },
-    { action: 'chatEndorsed', label: 'Chat endorsements', count: s.chatEndorsed, xp: s.chatEndorsed * ACTIONS.chatEndorsed },
-    { action: 'chatSparked', label: 'Conversations sparked', count: s.chatSparked, xp: s.chatSparked * ACTIONS.chatSparked },
-    { action: 'writerLike', label: 'Writer likes', count: s.writerLikes, xp: s.writerLikes * ACTIONS.writerLike },
-    { action: 'investorFollow', label: 'Investor follows', count: s.investorFollows, xp: s.investorFollows * ACTIONS.investorFollow },
+    {
+      action: 'champion',
+      label: 'Champions',
+      count: s.champions,
+      xp: s.champions * ACTIONS.champion,
+    },
+    {
+      action: 'recommendOpened',
+      label: 'Recommends opened',
+      count: s.recsOpened,
+      xp: s.recsOpened * ACTIONS.recommendOpened,
+    },
+    {
+      action: 'recommendLanded',
+      label: 'Recommends landed',
+      count: s.recsLanded,
+      xp: s.recsLanded * ACTIONS.recommendLanded,
+    },
+    {
+      action: 'recommendToChampion',
+      label: 'Recommend → champion',
+      count: s.recsConverted,
+      xp: s.recsConverted * ACTIONS.recommendToChampion,
+    },
+    {
+      action: 'earlySpot',
+      label: 'Early spots',
+      count: s.earlySpots,
+      xp: s.earlySpots * ACTIONS.earlySpot,
+    },
+    {
+      action: 'earlyOpinionSpot',
+      label: 'First opinions',
+      count: s.earlyOpinions,
+      xp: s.earlyOpinions * ACTIONS.earlyOpinionSpot,
+    },
+    {
+      action: 'chatEndorsed',
+      label: 'Chat endorsements',
+      count: s.chatEndorsed,
+      xp: s.chatEndorsed * ACTIONS.chatEndorsed,
+    },
+    {
+      action: 'chatSparked',
+      label: 'Conversations sparked',
+      count: s.chatSparked,
+      xp: s.chatSparked * ACTIONS.chatSparked,
+    },
+    {
+      action: 'writerLike',
+      label: 'Writer likes',
+      count: s.writerLikes,
+      xp: s.writerLikes * ACTIONS.writerLike,
+    },
+    {
+      action: 'investorFollow',
+      label: 'Investor follows',
+      count: s.investorFollows,
+      xp: s.investorFollows * ACTIONS.investorFollow,
+    },
   ];
   const totalXp = breakdown.reduce((a, b) => a + b.xp, 0);
 
@@ -320,7 +382,15 @@ export function publicConfig() {
     actions: ACTIONS,
     feedbackMax: FEEDBACK_MAX,
     barMax: XP_BAR_MAX,
-    levels: LEVELS.map(({ key, name, min, color, gate, reward, competitive }) => ({ key, name, min, color, gate, reward, competitive: !!competitive })),
+    levels: LEVELS.map(({ key, name, min, color, gate, reward, competitive }) => ({
+      key,
+      name,
+      min,
+      color,
+      gate,
+      reward,
+      competitive: !!competitive,
+    })),
     badges: BADGES,
     credit: { slotsPerFilm: CREDIT_SLOTS_PER_FILM, weights: CREDIT_WEIGHTS },
     featuredTitle: 'The Carrier',

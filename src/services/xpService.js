@@ -13,7 +13,12 @@
 // the spoofable public POST /events traffic — earn nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { scoreReader, CREDIT_WEIGHTS, CREDIT_SLOTS_PER_FILM, EARLY_CHAMPION_RANK } from '../lib/xpConfig.js';
+import {
+  scoreReader,
+  CREDIT_WEIGHTS,
+  CREDIT_SLOTS_PER_FILM,
+  EARLY_CHAMPION_RANK,
+} from '../lib/xpConfig.js';
 import { aggregateReaderStats } from '../lib/xpAggregate.js';
 import { isFinishedRead } from '../lib/readGate.js';
 import { roleName } from '../lib/roleRegistry.js';
@@ -78,7 +83,11 @@ function resolveFeaturedScriptId(scripts) {
   // Substring match (no RegExp → no metacharacter throw on a bad env value), and a
   // deterministic tie-break so the pick is stable when several titles match.
   const needle = env.featuredScriptTitle.toLowerCase();
-  const hits = (scripts || []).filter((s) => String(s.title || '').toLowerCase().includes(needle));
+  const hits = (scripts || []).filter((s) =>
+    String(s.title || '')
+      .toLowerCase()
+      .includes(needle),
+  );
   if (!hits.length) return null;
   hits.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   return hits[0].id;
@@ -113,7 +122,15 @@ export async function getReaderXp(handle) {
   // We only need this reader's stats, but recommend-funnel attribution needs the
   // full event set, so aggregate over a one-reader list.
   const featuredScriptId = resolveFeaturedScriptId(scripts);
-  const statsByReader = aggregateReaderStats({ readers: [reader], events, champions, feedback, scripts, featuredScriptId, chat });
+  const statsByReader = aggregateReaderStats({
+    readers: [reader],
+    events,
+    champions,
+    feedback,
+    scripts,
+    featuredScriptId,
+    chat,
+  });
   return shapeReader(statsByReader[reader.id], reader);
 }
 
@@ -153,7 +170,15 @@ export async function getAllReaderXp(prefetched = null) {
   const { readers, events, champions, feedback, scripts, chat } =
     prefetched || (await fetchXpRows());
   const featuredScriptId = resolveFeaturedScriptId(scripts);
-  const statsByReader = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId, chat });
+  const statsByReader = aggregateReaderStats({
+    readers,
+    events,
+    champions,
+    feedback,
+    scripts,
+    featuredScriptId,
+    chat,
+  });
   const list = readers
     .map((r) => shapeReader(statsByReader[r.id], r))
     .filter((r) => r.totalXp > 0 || r.raw.verifiedReads > 0 || r.raw.championsAll > 0)
@@ -170,14 +195,27 @@ export async function getAllReaderXp(prefetched = null) {
 export async function filmCreditContenders(scriptId) {
   const sinceISO = new Date(Date.now() - 365 * 864e5).toISOString();
   const [readers, events, champions, feedback, scripts, chat] = await Promise.all([
-    getReaders(), listReadEvents({ sinceISO }), getChampions(), getFeedbackForXp(), getScriptTitles(), getChatSignals(),
+    getReaders(),
+    listReadEvents({ sinceISO }),
+    getChampions(),
+    getFeedbackForXp(),
+    getScriptTitles(),
+    getChatSignals(),
   ]);
   const script = (scripts || []).find((s) => s.id === scriptId) || {};
   const pages = script.page_count;
   const featuredScriptId = resolveFeaturedScriptId(scripts);
 
   // global standing → who is ELIGIBLE for screen credit (reached the credit tier)
-  const allStats = aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId, chat });
+  const allStats = aggregateReaderStats({
+    readers,
+    events,
+    champions,
+    feedback,
+    scripts,
+    featuredScriptId,
+    chat,
+  });
   const standing = {};
   readers.forEach((r) => {
     const scored = scoreReader(allStats[r.id]);
@@ -195,7 +233,9 @@ export async function filmCreditContenders(scriptId) {
       if (e.seconds != null) x.seconds = Math.max(x.seconds, e.seconds);
     }
   }
-  const fedBack = new Set((feedback || []).filter((f) => f.script_id === scriptId && f.reader_id).map((f) => f.reader_id));
+  const fedBack = new Set(
+    (feedback || []).filter((f) => f.script_id === scriptId && f.reader_id).map((f) => f.reader_id),
+  );
   // landed recommenders for this film (their share link drove a finished read)
   const recReads = {};
   for (const e of events) {
@@ -210,19 +250,28 @@ export async function filmCreditContenders(scriptId) {
     }
   }
   const landedRec = new Set();
-  Object.values(recReads).forEach((x) => { if (isFinishedRead(x.depth, x.seconds, pages)) landedRec.add(x.rec); });
+  Object.values(recReads).forEach((x) => {
+    if (isFinishedRead(x.depth, x.seconds, pages)) landedRec.add(x.rec);
+  });
 
   const byId = {};
-  readers.forEach((r) => { byId[r.id] = r; });
+  readers.forEach((r) => {
+    byId[r.id] = r;
+  });
   const contrib = {};
-  const ensure = (id) => (byId[id] ? (contrib[id] || (contrib[id] = { early: false, recLanded: false, champion: false, readFeedback: false })) : null);
+  const ensure = (id) =>
+    byId[id]
+      ? contrib[id] ||
+        (contrib[id] = { early: false, recLanded: false, champion: false, readFeedback: false })
+      : null;
   champs.forEach((c) => {
     // Read-gated (same rule as the XP aggregator): a champion row on this film
     // only sets the champion/early contribution flags when the champion has a
     // VERIFIED FINISHED READ of the film.
     const rv = reads[c.reader_id];
     if (!(rv && isFinishedRead(rv.depth, rv.seconds, pages))) return;
-    const x = ensure(c.reader_id); if (!x) return;
+    const x = ensure(c.reader_id);
+    if (!x) return;
     x.champion = true;
     // early = among the first EARLY_CHAMPION_RANK to champion this film AND the crowd
     // later validated it (someone else championed after) — scarce, not "all-but-last".
@@ -231,29 +280,52 @@ export async function filmCreditContenders(scriptId) {
     if (earlier < EARLY_CHAMPION_RANK && laterByOther) x.early = true;
   });
   Object.entries(reads).forEach(([id, v]) => {
-    if (isFinishedRead(v.depth, v.seconds, pages) && fedBack.has(id)) { const x = ensure(id); if (x) x.readFeedback = true; }
+    if (isFinishedRead(v.depth, v.seconds, pages) && fedBack.has(id)) {
+      const x = ensure(id);
+      if (x) x.readFeedback = true;
+    }
   });
   readers.forEach((r) => {
     // attribute by stable handle (not the user-settable display_name)
-    if (landedRec.has(String(r.handle || '').toLowerCase())) { const x = ensure(r.id); if (x) x.recLanded = true; }
+    if (landedRec.has(String(r.handle || '').toLowerCase())) {
+      const x = ensure(r.id);
+      if (x) x.recLanded = true;
+    }
   });
 
-  const contenders = Object.entries(contrib).map(([id, x]) => {
-    const r = byId[id];
-    const score = (x.early ? CREDIT_WEIGHTS.earlySpot : 0) + (x.recLanded ? CREDIT_WEIGHTS.recLanded : 0)
-      + (x.champion ? CREDIT_WEIGHTS.champion : 0) + (x.readFeedback ? CREDIT_WEIGHTS.readFeedback : 0);
-    return {
-      handle: r.handle, name: r.display_name || r.handle,
-      score, ...x,
-      eligible: standing[id].eligible, totalXp: standing[id].totalXp,
-    };
-  }).filter((c) => c.score > 0)
+  const contenders = Object.entries(contrib)
+    .map(([id, x]) => {
+      const r = byId[id];
+      const score =
+        (x.early ? CREDIT_WEIGHTS.earlySpot : 0) +
+        (x.recLanded ? CREDIT_WEIGHTS.recLanded : 0) +
+        (x.champion ? CREDIT_WEIGHTS.champion : 0) +
+        (x.readFeedback ? CREDIT_WEIGHTS.readFeedback : 0);
+      return {
+        handle: r.handle,
+        name: r.display_name || r.handle,
+        score,
+        ...x,
+        eligible: standing[id].eligible,
+        totalXp: standing[id].totalXp,
+      };
+    })
+    .filter((c) => c.score > 0)
     .sort((a, b) => b.score - a.score || b.totalXp - a.totalXp);
 
   // award the limited slots to the top ELIGIBLE contenders
   const awarded = [];
   for (const c of contenders) {
-    if (c.eligible && awarded.length < CREDIT_SLOTS_PER_FILM) { c.awarded = true; awarded.push(c.handle); }
+    if (c.eligible && awarded.length < CREDIT_SLOTS_PER_FILM) {
+      c.awarded = true;
+      awarded.push(c.handle);
+    }
   }
-  return { scriptId, title: script.title || null, slotsPerFilm: CREDIT_SLOTS_PER_FILM, awarded, contenders };
+  return {
+    scriptId,
+    title: script.title || null,
+    slotsPerFilm: CREDIT_SLOTS_PER_FILM,
+    awarded,
+    contenders,
+  };
 }

@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 // Satisfy src/config/env.js (which validates process.env and exits on failure).
 process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-dummy';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
+process.env.SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
 process.env.SUBMISSION_PASSCODE = process.env.SUBMISSION_PASSCODE || '0000';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dummy-jwt-secret-至少十六-chars';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_dummy';
@@ -15,8 +16,14 @@ process.env.EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@interdependent.studi
 
 test('readerService exports email + recovery-token helpers', async () => {
   const svc = await import('../src/services/readerService.js');
-  for (const fn of ['createReader', 'updateReaderEmail', 'createRecoveryToken',
-    'getRecoveryTokenByHash', 'consumeRecoveryToken', 'purgeExpiredRecoveryTokens']) {
+  for (const fn of [
+    'createReader',
+    'updateReaderEmail',
+    'createRecoveryToken',
+    'getRecoveryTokenByHash',
+    'consumeRecoveryToken',
+    'purgeExpiredRecoveryTokens',
+  ]) {
     assert.equal(typeof svc[fn], 'function', `readerService.${fn} should be a function`);
   }
 });
@@ -28,8 +35,17 @@ test('emailService exports sendRecoveryEmail', async () => {
 
 test('readerController exports the new handlers', async () => {
   const c = await import('../src/controllers/readerController.js');
-  for (const fn of ['registerBegin', 'registerComplete', 'setRecoveryEmail',
-    'addDeviceBegin', 'addDeviceComplete', 'recoverRequest', 'recoverBegin', 'recoverComplete', 'uploadPhoto']) {
+  for (const fn of [
+    'registerBegin',
+    'registerComplete',
+    'setRecoveryEmail',
+    'addDeviceBegin',
+    'addDeviceComplete',
+    'recoverRequest',
+    'recoverBegin',
+    'recoverComplete',
+    'uploadPhoto',
+  ]) {
     assert.equal(typeof c[fn], 'function', `readerController.${fn} should be a function`);
   }
 });
@@ -51,6 +67,9 @@ test('readers route module mounts without throwing', async () => {
     'POST /recover/complete',
     'POST /photo',
   ]) {
-    assert.ok(paths.includes(expected), `route ${expected} should be mounted (saw: ${paths.join(', ')})`);
+    assert.ok(
+      paths.includes(expected),
+      `route ${expected} should be mounted (saw: ${paths.join(', ')})`,
+    );
   }
 });

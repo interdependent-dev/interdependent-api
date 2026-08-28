@@ -67,8 +67,10 @@ export async function uploadReaderAvatar({ path, buffer, contentType }) {
 
 export async function deleteReaderAvatar(path) {
   if (!path) return;
-  await supabase.storage.from(AVATAR_BUCKET).remove([path]).catch((err) =>
-    logger.warn({ path, err }, 'deleteReaderAvatar failed (non-fatal)'));
+  await supabase.storage
+    .from(AVATAR_BUCKET)
+    .remove([path])
+    .catch((err) => logger.warn({ path, err }, 'deleteReaderAvatar failed (non-fatal)'));
 }
 
 export async function updateReaderPhoto({ id, photoPath }) {
@@ -103,7 +105,15 @@ export async function getCredentialById(credentialId) {
   return data;
 }
 
-export async function createCredential({ readerId, credentialId, publicKey, counter, deviceType, backedUp, transports }) {
+export async function createCredential({
+  readerId,
+  credentialId,
+  publicKey,
+  counter,
+  deviceType,
+  backedUp,
+  transports,
+}) {
   const { error } = await supabase.from('reader_credentials').insert({
     reader_id: readerId,
     credential_id: credentialId,

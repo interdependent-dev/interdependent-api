@@ -17,6 +17,8 @@ export function requireActionToken(req, res, next) {
     req.reader = { id: payload.readerId, handle: payload.handle };
     next();
   } catch {
-    res.status(401).json({ error: 'Action token expired or invalid', code: 'action_token_expired' });
+    res
+      .status(401)
+      .json({ error: 'Action token expired or invalid', code: 'action_token_expired' });
   }
 }

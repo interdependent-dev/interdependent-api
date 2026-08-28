@@ -13,7 +13,8 @@ import jwt from 'jsonwebtoken';
 // Curator config BEFORE any import pulls the env singleton.
 process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-dummy';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
+process.env.SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
 process.env.SUBMISSION_PASSCODE = process.env.SUBMISSION_PASSCODE || '0000';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dummy-jwt-secret-sixteen-plus';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_dummy';
@@ -40,7 +41,9 @@ test('optionalReader: valid reader_session token → req.reader', async () => {
   const token = jwt.sign({ purpose: 'reader_session', readerId: 'r1', handle: 'jane' }, SECRET);
   const req = { headers: { 'x-reader-session': token } };
   let called = false;
-  optionalReader(req, {}, () => { called = true; });
+  optionalReader(req, {}, () => {
+    called = true;
+  });
   assert.equal(called, true, 'always calls next()');
   assert.deepEqual(req.reader, { id: 'r1', handle: 'jane' });
 });
@@ -63,11 +66,20 @@ test('optionalReader: wrong-purpose / missing / garbage token → anonymous (no 
   // missing
   req = { headers: {} };
   let called = false;
-  optionalReader(req, {}, () => { called = true; });
+  optionalReader(req, {}, () => {
+    called = true;
+  });
   assert.equal(req.reader, undefined);
   assert.equal(called, true);
   // garbage / wrong secret
-  req = { headers: { 'x-reader-session': jwt.sign({ purpose: 'reader_session', readerId: 'z' }, 'other-secret-xxxxx') } };
+  req = {
+    headers: {
+      'x-reader-session': jwt.sign(
+        { purpose: 'reader_session', readerId: 'z' },
+        'other-secret-xxxxx',
+      ),
+    },
+  };
   optionalReader(req, {}, () => {});
   assert.equal(req.reader, undefined, 'bad signature rejected');
 });
@@ -87,19 +99,29 @@ test('isCuratorHandle: admin-allowlisted → true (case-insensitive); empty/null
 test('requireAuth: accepts the portal token only; rejects reader_session / action tokens', async () => {
   const { requireAuth } = await import('../src/middleware/requireAuth.js');
   function run(token) {
-    let status = null, nexted = false;
+    let status = null,
+      nexted = false;
     const req = { headers: token ? { authorization: 'Bearer ' + token } : {}, cookies: {} };
-    const res = { status: (c) => { status = c; return { json: () => {} }; } };
-    requireAuth(req, res, () => { nexted = true; });
+    const res = {
+      status: (c) => {
+        status = c;
+        return { json: () => {} };
+      },
+    };
+    requireAuth(req, res, () => {
+      nexted = true;
+    });
     return { status, nexted, req };
   }
   let r = run(jwt.sign({ authenticated: true }, SECRET));
   assert.equal(r.nexted, true, 'portal token accepted');
   assert.equal(r.req.auth.authenticated, true);
   r = run(jwt.sign({ purpose: 'reader_session', readerId: 'x', handle: 'y' }, SECRET));
-  assert.equal(r.nexted, false); assert.equal(r.status, 401);
+  assert.equal(r.nexted, false);
+  assert.equal(r.status, 401);
   r = run(jwt.sign({ purpose: 'leaderboard_action', readerId: 'x', handle: 'y' }, SECRET));
-  assert.equal(r.nexted, false, 'action token rejected as portal credential'); assert.equal(r.status, 401);
+  assert.equal(r.nexted, false, 'action token rejected as portal credential');
+  assert.equal(r.status, 401);
   assert.equal(run(null).status, 401);
 });
 

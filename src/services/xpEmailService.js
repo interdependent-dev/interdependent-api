@@ -28,7 +28,12 @@ async function send(to, email) {
   try {
     // Resend reports API failures as a resolved { error }, not a throw —
     // surface it so a bad key/outage lands in the catch below, not silence.
-    const { error } = await resend.emails.send({ from: FROM, to, subject: email.subject, html: email.html });
+    const { error } = await resend.emails.send({
+      from: FROM,
+      to,
+      subject: email.subject,
+      html: email.html,
+    });
     if (error) throw new Error(`Resend: ${error.message || error.name}`);
   } catch (err) {
     logger.error({ subject: email.subject, err }, 'XP email send failed');
@@ -60,7 +65,8 @@ export async function notifyReaderActivity({ readerId, handle, kind, scriptTitle
     if (xp && xp.levels) {
       const fresh = [];
       for (const lvl of xp.levels) {
-        if (lvl.min > 0 && lvl.unlocked && (await claimNotification(reader.id, 'unlock', lvl.key))) fresh.push(lvl);
+        if (lvl.min > 0 && lvl.unlocked && (await claimNotification(reader.id, 'unlock', lvl.key)))
+          fresh.push(lvl);
       }
       const top = fresh.sort((a, b) => b.min - a.min)[0];
       if (top) await send(reader.email, unlockEmail(name, top.key));

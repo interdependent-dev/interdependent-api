@@ -8,17 +8,17 @@ import { readingPct, isFinishedRead } from '../src/lib/readGate.js';
 // [name, depth%, activeSeconds, pages, expectedReadingPct, expectedFinished]
 // Identical vectors to site/test/read-gate.test.js.
 const CASES = [
-  ['genuine full read',           96, 4000, 110, 96, true],
-  ['sub-minute skim (the bug)',  100,   50, 110,  2, false],
-  ['fast-scroll skim',           100,   20, 110,  1, false],
-  ['partial real read',           92, 1900, 110, 86, true],
-  ['read half, carefully',        50, 2000, 110, 50, false],
-  ['short script, real read',     95,  700,  30, 95, true],
-  ['short script, skim',          95,   60,  30, 10, false],
-  ['unknown pages, real read',    90, 2200, null, 90, true],
-  ['unknown pages, skim',        100,   30, null,  2, false],
-  ['exactly at the finish bar',   85, 1700, 100, 85, true],
-  ['one notch under the bar',     85, 1680, 100, 84, false],
+  ['genuine full read', 96, 4000, 110, 96, true],
+  ['sub-minute skim (the bug)', 100, 50, 110, 2, false],
+  ['fast-scroll skim', 100, 20, 110, 1, false],
+  ['partial real read', 92, 1900, 110, 86, true],
+  ['read half, carefully', 50, 2000, 110, 50, false],
+  ['short script, real read', 95, 700, 30, 95, true],
+  ['short script, skim', 95, 60, 30, 10, false],
+  ['unknown pages, real read', 90, 2200, null, 90, true],
+  ['unknown pages, skim', 100, 30, null, 2, false],
+  ['exactly at the finish bar', 85, 1700, 100, 85, true],
+  ['one notch under the bar', 85, 1680, 100, 84, false],
 ];
 
 for (const [name, d, s, p, expectPct, expectFin] of CASES) {

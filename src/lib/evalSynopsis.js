@@ -26,13 +26,16 @@ function parseEvalObject(value) {
   if (value == null) return null;
   if (typeof value === 'object') return Array.isArray(value) ? null : value;
   if (typeof value !== 'string') return null;
-  const stripped = value.trim()
+  const stripped = value
+    .trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```\s*$/, '');
   try {
     const parsed = JSON.parse(stripped);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-  } catch { /* fall through to the braces slice */ }
+  } catch {
+    /* fall through to the braces slice */
+  }
   const a = stripped.indexOf('{');
   const b = stripped.lastIndexOf('}');
   if (a === -1 || b <= a) return null;

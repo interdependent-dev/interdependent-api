@@ -7,7 +7,12 @@ import {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { env } from '../config/env.js';
 
-export async function createRegistrationOptions({ userID, userName, userDisplayName, excludeCredentials = [] }) {
+export async function createRegistrationOptions({
+  userID,
+  userName,
+  userDisplayName,
+  excludeCredentials = [],
+}) {
   return generateRegistrationOptions({
     rpName: env.rpName,
     rpID: env.rpId,
@@ -21,7 +26,7 @@ export async function createRegistrationOptions({ userID, userName, userDisplayN
       transports: c.transports ?? [],
     })),
     authenticatorSelection: {
-      residentKey: 'required',           // enables discoverable credentials
+      residentKey: 'required', // enables discoverable credentials
       userVerification: 'preferred',
       authenticatorAttachment: 'platform', // forces iCloud Keychain on Mac/iOS
     },

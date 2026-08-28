@@ -42,8 +42,15 @@ function recsByNameFromEvents(events) {
     const rn = String(e.recommender).toLowerCase();
     const key = `${e.session_id}::${e.script_id}`;
     const m = byName[rn] || (byName[rn] = {});
-    const s = m[key] || (m[key] = { opened: false, depth: 0, seconds: 0, script: e.script_id, readerId: null });
-    if (e.event_type === 'recommend_open' || e.event_type === 'script_view' || e.event_type === 'reader_open') s.opened = true;
+    const s =
+      m[key] ||
+      (m[key] = { opened: false, depth: 0, seconds: 0, script: e.script_id, readerId: null });
+    if (
+      e.event_type === 'recommend_open' ||
+      e.event_type === 'script_view' ||
+      e.event_type === 'reader_open'
+    )
+      s.opened = true;
     if (e.event_type === 'read_progress') {
       if (e.depth_pct != null) s.depth = Math.max(s.depth, e.depth_pct);
       if (e.seconds != null) s.seconds = Math.max(s.seconds, e.seconds);
@@ -59,9 +66,19 @@ function recsByNameFromEvents(events) {
 // featuredScriptId (The Carrier) gates the event perk: featuredRead/featuredFeedback
 // reflect activity on that specific script. If it's null/unknown, they fall back to
 // "any read / any feedback" so the perk is never permanently unreachable.
-export function aggregateReaderStats({ readers, events, champions, feedback, scripts, featuredScriptId = null, chat = { messages: [], endorsements: [] } }) {
+export function aggregateReaderStats({
+  readers,
+  events,
+  champions,
+  feedback,
+  scripts,
+  featuredScriptId = null,
+  chat = { messages: [], endorsements: [] },
+}) {
   const pagesById = {};
-  (scripts || []).forEach((s) => { pagesById[s.id] = s.page_count; });
+  (scripts || []).forEach((s) => {
+    pagesById[s.id] = s.page_count;
+  });
 
   const readsByReader = readsByReaderFromEvents(events || []);
   const recByName = recsByNameFromEvents(events || []);
@@ -94,7 +111,10 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
   const opinionsByScript = {};
   (feedback || []).forEach((f) => {
     if (!f.reader_id || !f.script_id) return;
-    (opinionsByScript[f.script_id] || (opinionsByScript[f.script_id] = [])).push({ reader_id: f.reader_id, created_at: f.created_at });
+    (opinionsByScript[f.script_id] || (opinionsByScript[f.script_id] = [])).push({
+      reader_id: f.reader_id,
+      created_at: f.created_at,
+    });
   });
 
   // Chat signals (Stage 4). Peer XP: endorsements you RECEIVED from OTHER champions,
@@ -105,17 +125,23 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
   // DISTINCT endorsers who endorsed any of your messages; DISTINCT other readers who
   // replied to any of your messages.
   const msgAuthor = {};
-  (chat.messages || []).forEach((m) => { msgAuthor[m.id] = m.reader_id; });
+  (chat.messages || []).forEach((m) => {
+    msgAuthor[m.id] = m.reader_id;
+  });
   const endorsersByAuthor = {};
   (chat.endorsements || []).forEach((e) => {
     const author = msgAuthor[e.message_id];
-    if (author && author !== e.endorser_id) (endorsersByAuthor[author] || (endorsersByAuthor[author] = new Set())).add(e.endorser_id);
+    if (author && author !== e.endorser_id)
+      (endorsersByAuthor[author] || (endorsersByAuthor[author] = new Set())).add(e.endorser_id);
   });
   const repliersByAuthor = {};
   (chat.messages || []).forEach((m) => {
     if (!m.parent_id) return;
     const parentAuthor = msgAuthor[m.parent_id];
-    if (parentAuthor && parentAuthor !== m.reader_id) (repliersByAuthor[parentAuthor] || (repliersByAuthor[parentAuthor] = new Set())).add(m.reader_id);
+    if (parentAuthor && parentAuthor !== m.reader_id)
+      (repliersByAuthor[parentAuthor] || (repliersByAuthor[parentAuthor] = new Set())).add(
+        m.reader_id,
+      );
   });
 
   const statsByReader = {};
@@ -153,12 +179,19 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
     const earlyOpinions = Object.entries(opinionsByScript).filter(([sid, ops]) => {
       const mine = ops.filter((o) => o.reader_id === r.id && o.created_at);
       if (!mine.length) return false;
-      const myEarliest = mine.reduce((m, o) => (o.created_at < m ? o.created_at : m), mine[0].created_at);
+      const myEarliest = mine.reduce(
+        (m, o) => (o.created_at < m ? o.created_at : m),
+        mine[0].created_at,
+      );
       // Someone else was first if they have an earlier timestamp, OR an EQUAL timestamp
       // with a smaller reader_id (a stable tie-break so an exact tie can't double-award).
       // A missing created_at never counts as "first".
-      const beaten = ops.some((o) => o.reader_id !== r.id && o.created_at &&
-        (o.created_at < myEarliest || (o.created_at === myEarliest && o.reader_id < r.id)));
+      const beaten = ops.some(
+        (o) =>
+          o.reader_id !== r.id &&
+          o.created_at &&
+          (o.created_at < myEarliest || (o.created_at === myEarliest && o.reader_id < r.id)),
+      );
       const crowd = ops.some((o) => o.reader_id !== r.id);
       return !beaten && crowd && finishedScripts.has(sid);
     }).length;
@@ -199,8 +232,8 @@ export function aggregateReaderStats({ readers, events, champions, feedback, scr
     });
     const recsLanded = landedScripts.size;
     const myRecScripts = new Set(recs.map((s) => s.script));
-    const recsConverted = [...myRecScripts].filter((sid) =>
-      (champByScript[sid] || []).some((c) => c.reader_id !== r.id) // championed by someone OTHER than the recommender
+    const recsConverted = [...myRecScripts].filter(
+      (sid) => (champByScript[sid] || []).some((c) => c.reader_id !== r.id), // championed by someone OTHER than the recommender
     ).length;
 
     statsByReader[r.id] = {

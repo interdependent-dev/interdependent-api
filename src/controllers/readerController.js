@@ -43,7 +43,9 @@ function buildHandle(firstName, lastName) {
 // passkey, so normalize it consistently (trim + lowercase) everywhere it's
 // stored or compared.
 function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
+  return String(email || '')
+    .trim()
+    .toLowerCase();
 }
 
 const RECOVERY_TTL_MS = 30 * 60 * 1000; // 30 min
@@ -94,7 +96,8 @@ export async function registerBegin(req, res, next) {
   const { firstName, lastName } = parsed.data;
   const email = normalizeEmail(parsed.data.email);
   const handle = buildHandle(firstName, lastName);
-  if (!handle) return next(new AppError('Handle could not be derived from the provided names', 400));
+  if (!handle)
+    return next(new AppError('Handle could not be derived from the provided names', 400));
 
   const displayName = `${firstName} ${lastName}`;
   const tempReaderId = randomUUID();
@@ -151,7 +154,8 @@ export async function registerComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   const { tempReaderId, handle, displayName, email } = stored.metadata ?? {};
   if (!tempReaderId || !handle) {
@@ -162,7 +166,9 @@ export async function registerComplete(req, res, next) {
   try {
     regInfo = await finishRegistration({ credential, expectedChallenge: stored.challenge });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'),
+    );
   }
 
   // Admin/Curator handles are RESERVED — they cannot be self-registered, so a handle
@@ -279,7 +285,8 @@ export async function authComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   // The credential.id or credential.rawId tells us which credential was used
   const credentialId = credential.id;
@@ -298,11 +305,18 @@ export async function authComplete(req, res, next) {
       storedCredential,
     });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 401, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 401, 'passkey_verify_failed'),
+    );
   }
 
-  await updateCredentialCounter({ id: storedCredential.id, counter: authInfo.newCounter }).catch((err) =>
-    logger.warn({ credentialId: storedCredential.id, err }, 'updateCredentialCounter failed (non-fatal)'));
+  await updateCredentialCounter({ id: storedCredential.id, counter: authInfo.newCounter }).catch(
+    (err) =>
+      logger.warn(
+        { credentialId: storedCredential.id, err },
+        'updateCredentialCounter failed (non-fatal)',
+      ),
+  );
 
   // Cross-check userHandle when the browser returned one — it should decode
   // to the reader's UUID (set as userID bytes during registration).
@@ -316,7 +330,9 @@ export async function authComplete(req, res, next) {
       }
     } catch {
       // Malformed userHandle — treat as a verification failure
-      return next(new AppError('Invalid userHandle in credential response', 401, 'passkey_verify_failed'));
+      return next(
+        new AppError('Invalid userHandle in credential response', 401, 'passkey_verify_failed'),
+      );
     }
   }
 
@@ -381,7 +397,11 @@ export async function uploadPhoto(req, res, next) {
   const key = `${reader.id}-${randomBytes(4).toString('hex')}.${ext}`;
 
   try {
-    await uploadReaderAvatar({ path: key, buffer: req.file.buffer, contentType: req.file.mimetype });
+    await uploadReaderAvatar({
+      path: key,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype,
+    });
   } catch (err) {
     return next(new AppError(`Upload failed: ${err.message}`, 500));
   }
@@ -421,7 +441,8 @@ export async function getRecoveryEmail(req, res, next) {
 
 export async function setRecoveryEmail(req, res, next) {
   const parsed = setEmailSchema.safeParse(req.body);
-  if (!parsed.success) return next(new AppError('A valid email is required', 400, 'email_required'));
+  if (!parsed.success)
+    return next(new AppError('A valid email is required', 400, 'email_required'));
 
   const email = normalizeEmail(parsed.data.email);
   try {
@@ -483,7 +504,8 @@ const addDeviceCompleteSchema = z.object({
 
 export async function addDeviceComplete(req, res, next) {
   const parsed = addDeviceCompleteSchema.safeParse(req.body);
-  if (!parsed.success) return next(new AppError('challengeId (UUID) and credential are required', 400));
+  if (!parsed.success)
+    return next(new AppError('challengeId (UUID) and credential are required', 400));
 
   const { challengeId, credential } = parsed.data;
 
@@ -493,19 +515,24 @@ export async function addDeviceComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   // The challenge must belong to the reader who authenticated for this request.
   const ownerId = stored.metadata?.addDeviceReaderId ?? stored.reader_id;
   if (!ownerId || ownerId !== req.reader.id) {
-    return next(new AppError('Challenge does not belong to this reader', 403, 'challenge_mismatch'));
+    return next(
+      new AppError('Challenge does not belong to this reader', 403, 'challenge_mismatch'),
+    );
   }
 
   let regInfo;
   try {
     regInfo = await finishRegistration({ credential, expectedChallenge: stored.challenge });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'),
+    );
   }
 
   try {
@@ -520,7 +547,13 @@ export async function addDeviceComplete(req, res, next) {
     });
   } catch (err) {
     if (/duplicate|unique/i.test(err.message)) {
-      return next(new AppError('This passkey is already registered to the account', 409, 'already_registered'));
+      return next(
+        new AppError(
+          'This passkey is already registered to the account',
+          409,
+          'already_registered',
+        ),
+      );
     }
     return next(new AppError(`Could not store credential: ${err.message}`, 500));
   }
@@ -553,7 +586,8 @@ const recoverRequestSchema = z.object({
 // matched (prevents account / email enumeration).
 const RECOVERY_GENERIC = {
   ok: true,
-  message: 'If that account exists and the email matches the one on file, a recovery link is on its way.',
+  message:
+    'If that account exists and the email matches the one on file, a recovery link is on its way.',
 };
 
 export async function recoverRequest(req, res, _next) {
@@ -619,7 +653,9 @@ export async function recoverBegin(req, res, next) {
   if (!parsed.success) return next(new AppError('Invalid recovery link', 400, 'recovery_invalid'));
 
   const { readerId, token } = parsed.data;
-  const { error, row } = await validateRecoveryToken({ readerId, token }).catch(() => ({ error: 'recovery_invalid' }));
+  const { error, row } = await validateRecoveryToken({ readerId, token }).catch(() => ({
+    error: 'recovery_invalid',
+  }));
   if (error) return next(new AppError('This recovery link is no longer valid', 400, error));
 
   const reader = await getReaderById(readerId).catch(() => null);
@@ -661,7 +697,8 @@ const recoverCompleteSchema = z.object({
 
 export async function recoverComplete(req, res, next) {
   const parsed = recoverCompleteSchema.safeParse(req.body);
-  if (!parsed.success) return next(new AppError('challengeId (UUID) and credential are required', 400));
+  if (!parsed.success)
+    return next(new AppError('challengeId (UUID) and credential are required', 400));
 
   const { challengeId, credential } = parsed.data;
 
@@ -671,19 +708,28 @@ export async function recoverComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Challenge lookup failed: ${err.message}`, 500));
   }
-  if (!stored) return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
+  if (!stored)
+    return next(new AppError('Challenge not found or expired', 400, 'challenge_expired'));
 
   const readerId = stored.metadata?.recoverReaderId;
   const recoveryTokenId = stored.metadata?.recoveryTokenId;
   if (!readerId || !recoveryTokenId) {
-    return next(new AppError('Recovery challenge metadata missing — start recovery again', 400, 'recovery_invalid'));
+    return next(
+      new AppError(
+        'Recovery challenge metadata missing — start recovery again',
+        400,
+        'recovery_invalid',
+      ),
+    );
   }
 
   let regInfo;
   try {
     regInfo = await finishRegistration({ credential, expectedChallenge: stored.challenge });
   } catch (err) {
-    return next(new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'));
+    return next(
+      new AppError(`Passkey verification failed: ${err.message}`, 400, 'passkey_verify_failed'),
+    );
   }
 
   // Atomically spend the recovery token — the guarded update returns true only
@@ -694,7 +740,8 @@ export async function recoverComplete(req, res, next) {
   } catch (err) {
     return next(new AppError(`Recovery token check failed: ${err.message}`, 500));
   }
-  if (!won) return next(new AppError('This recovery link has already been used', 400, 'recovery_used'));
+  if (!won)
+    return next(new AppError('This recovery link has already been used', 400, 'recovery_used'));
 
   try {
     await createCredential({
@@ -708,7 +755,13 @@ export async function recoverComplete(req, res, next) {
     });
   } catch (err) {
     if (/duplicate|unique/i.test(err.message)) {
-      return next(new AppError('That passkey is already registered — try signing in instead.', 409, 'already_registered'));
+      return next(
+        new AppError(
+          'That passkey is already registered — try signing in instead.',
+          409,
+          'already_registered',
+        ),
+      );
     }
     return next(new AppError(`Could not store credential: ${err.message}`, 500));
   }

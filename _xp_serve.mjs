@@ -25,7 +25,9 @@ const { default: app } = await import(`${API}/src/app.js`);
 const wrap = express();
 wrap.get('/xp/_previewtoken', (_req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
-  res.type('text/plain').send(jwt.sign({ authenticated: true }, process.env.JWT_SECRET, { expiresIn: '12h' }));
+  res
+    .type('text/plain')
+    .send(jwt.sign({ authenticated: true }, process.env.JWT_SECRET, { expiresIn: '12h' }));
 });
 wrap.use(app);
 wrap.listen(3001, () => console.log('xp preview API on http://127.0.0.1:3001'));

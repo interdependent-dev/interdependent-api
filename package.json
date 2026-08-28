@@ -10,24 +10,24 @@
     "test": "node --test test/*.test.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.3.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.1",
-    "@simplewebauthn/server": "^13.3.1",
-    "@supabase/supabase-js": "^2.47.0",
+    "@anthropic-ai/sdk": "^0.122.0",
+    "@simplewebauthn/server": "^13.3.3",
+    "@supabase/supabase-js": "^2.112.4",
     "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.0.0",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.1.1",
-    "pdf-parse": "^1.1.1",
-    "resend": "^6.12.3",
-    "zod": "^3.24.2"
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
+    "express-rate-limit": "^8.6.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "pdf-parse": "^2.4.5",
+    "resend": "^6.25.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.14"
   }
 }

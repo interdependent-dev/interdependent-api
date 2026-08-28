@@ -16,21 +16,22 @@ function issueList(error) {
 }
 
 function makeValidator(source, label, code) {
-  return (schema) => function validate(req, _res, next) {
-    const parsed = schema.safeParse(req[source] ?? {});
-    if (!parsed.success) {
-      return next(new AppError(`Invalid ${label}: ${issueList(parsed.error)}`, 400, code));
-    }
-    // req.query is an accessor on Express's request prototype (no setter), so a
-    // plain assignment throws in strict mode — shadow it on the instance instead.
-    Object.defineProperty(req, source, {
-      value: parsed.data,
-      writable: true,
-      enumerable: true,
-      configurable: true,
-    });
-    next();
-  };
+  return (schema) =>
+    function validate(req, _res, next) {
+      const parsed = schema.safeParse(req[source] ?? {});
+      if (!parsed.success) {
+        return next(new AppError(`Invalid ${label}: ${issueList(parsed.error)}`, 400, code));
+      }
+      // req.query is an accessor on Express's request prototype (no setter), so a
+      // plain assignment throws in strict mode — shadow it on the instance instead.
+      Object.defineProperty(req, source, {
+        value: parsed.data,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+      next();
+    };
 }
 
 export const validateQuery = makeValidator('query', 'query parameters', 'invalid_query');

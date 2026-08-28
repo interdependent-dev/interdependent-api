@@ -40,7 +40,12 @@ test('shapeAssignment maps a joined row to the API shape', () => {
 test('partitionAssignments: undecided rows are pending, stamped rows are decided', () => {
   const rows = [
     ROW(),
-    ROW({ id: 'a2', script_id: 's2', decided_at: '2026-07-02T09:00:00Z', scripts: { title: 'Sequin & Stone' } }),
+    ROW({
+      id: 'a2',
+      script_id: 's2',
+      decided_at: '2026-07-02T09:00:00Z',
+      scripts: { title: 'Sequin & Stone' },
+    }),
   ];
   const { pending, decided, heal } = partitionAssignments(rows, {});
   assert.equal(pending.length, 1);
@@ -85,14 +90,19 @@ test('earliestFeedbackByScript keeps the EARLIEST timestamp per script and skips
     { script_id: 's1', created_at: '2026-07-01T00:00:00Z' }, // earlier — wins
     { script_id: 's2', created_at: '2026-07-05T00:00:00Z' },
     { script_id: null, created_at: '2026-07-01T00:00:00Z' }, // junk
-    { script_id: 's3', created_at: null },                   // junk
+    { script_id: 's3', created_at: null }, // junk
   ]);
   assert.deepEqual(at, { s1: '2026-07-01T00:00:00Z', s2: '2026-07-05T00:00:00Z' });
   assert.deepEqual(earliestFeedbackByScript(null), {});
 });
 
 test('isDuplicateError matches Postgres unique violations and nothing else', () => {
-  assert.equal(isDuplicateError('duplicate key value violates unique constraint "reader_assignments_reader_id_script_id_key"'), true);
+  assert.equal(
+    isDuplicateError(
+      'duplicate key value violates unique constraint "reader_assignments_reader_id_script_id_key"',
+    ),
+    true,
+  );
   assert.equal(isDuplicateError('error 23505'), true);
   assert.equal(isDuplicateError('connection refused'), false);
   assert.equal(isDuplicateError(null), false);

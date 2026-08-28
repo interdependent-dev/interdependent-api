@@ -28,8 +28,8 @@
  */
 
 const ORPHAN_PER_PAGE_LIMIT = 0.4;
-const MIN_ORPHANS = 10;            // absolute floor — a short excerpt can't trip the rate
-const LINES_PER_PAGE = 55;         // fallback page estimate when pageCount is unknown
+const MIN_ORPHANS = 10; // absolute floor — a short excerpt can't trip the rate
+const LINES_PER_PAGE = 55; // fallback page estimate when pageCount is unknown
 
 // A lone lowercase word, no trailing punctuation → a sentence orphaned across a
 // broken wrap. Trailing-dash interruptions ("anything-") and sentence enders
@@ -44,13 +44,19 @@ const isOrphanLine = (l) => /^[a-z][a-z'’]{0,16}$/.test(l);
  */
 export function screenplayFormatGate(text, { pageCount = 0 } = {}) {
   const reasons = [];
-  const nonblank = (text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const nonblank = (text || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
   const orphans = nonblank.filter(isOrphanLine);
   const pages = Math.max(pageCount || 0, Math.round(nonblank.length / LINES_PER_PAGE), 1);
   const orphansPerPage = Number((orphans.length / pages).toFixed(2));
 
   if (orphans.length >= MIN_ORPHANS && orphansPerPage >= ORPHAN_PER_PAGE_LIMIT) {
-    const sample = [...new Set(orphans)].slice(0, 6).map((w) => `"${w}"`).join(', ');
+    const sample = [...new Set(orphans)]
+      .slice(0, 6)
+      .map((w) => `"${w}"`)
+      .join(', ');
     reasons.push({
       code: 'broken_line_wrapping',
       detail:

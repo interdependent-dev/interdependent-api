@@ -6,7 +6,8 @@ import assert from 'node:assert';
 // Satisfy src/config/env.js (validates process.env and exits on failure).
 process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-dummy';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
+process.env.SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
 process.env.SUBMISSION_PASSCODE = process.env.SUBMISSION_PASSCODE || '0000';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dummy-jwt-secret-sixteen-plus';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_dummy';

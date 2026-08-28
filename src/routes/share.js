@@ -28,7 +28,11 @@ router.get('/:id', optionalReader, async (req, res, next) => {
     let pdfUrl = null;
     if (row.storage_path) {
       // fresh signed URL on every load so the link never goes stale
-      try { pdfUrl = await createSignedPdfUrl(row.storage_path, 3600); } catch { /* non-fatal */ }
+      try {
+        pdfUrl = await createSignedPdfUrl(row.storage_path, 3600);
+      } catch {
+        /* non-fatal */
+      }
     }
 
     const canSeeEval = await isCuratorHandle(req.reader?.handle);
@@ -45,17 +49,21 @@ router.get('/:id', optionalReader, async (req, res, next) => {
       pdfUrl,
       // The AI verdict is Curator-only. A recommend recipient (a Reader) never sees
       // the decision/score/coverage — they read it first, unbiased.
-      ...(canSeeEval ? {
-        budget: ev.budget ?? (ev.max_budget != null ? `$${Number(ev.max_budget).toLocaleString()}` : null),
-        decision: ev.decision ?? null,
-        readVerified: ev.read_verified ?? null,
-        // BARAKA evaluation (craft_score + championability_rating). Legacy fields
-        // included defensively for any not-yet-converted row.
-        evaluation: ev.evaluation ?? null,
-        scores: ev.scores ?? null,
-        weightedScore: ev.weighted_score ?? null,
-        comparableFilms: ev.comparable_films ?? null,
-      } : {}),
+      ...(canSeeEval
+        ? {
+            budget:
+              ev.budget ??
+              (ev.max_budget != null ? `$${Number(ev.max_budget).toLocaleString()}` : null),
+            decision: ev.decision ?? null,
+            readVerified: ev.read_verified ?? null,
+            // BARAKA evaluation (craft_score + championability_rating). Legacy fields
+            // included defensively for any not-yet-converted row.
+            evaluation: ev.evaluation ?? null,
+            scores: ev.scores ?? null,
+            weightedScore: ev.weighted_score ?? null,
+            comparableFilms: ev.comparable_films ?? null,
+          }
+        : {}),
     });
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));

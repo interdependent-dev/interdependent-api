@@ -2,10 +2,21 @@
 // from Christopher Amell + the team, stay branded, and cover every perk.
 import test from 'node:test';
 import assert from 'node:assert';
-import { wrap, feedbackEmail, championEmail, unlockEmail, UNLOCK_KEYS } from '../src/lib/xpEmailTemplates.js';
+import {
+  wrap,
+  feedbackEmail,
+  championEmail,
+  unlockEmail,
+  UNLOCK_KEYS,
+} from '../src/lib/xpEmailTemplates.js';
 
 test('the branded shell is dark, signed, and self-contained', () => {
-  const html = wrap({ eyebrow: 'X', heading: 'Hello', bodyHtml: '<p>Body</p>', cta: { text: 'Go', url: 'https://x' } });
+  const html = wrap({
+    eyebrow: 'X',
+    heading: 'Hello',
+    bodyHtml: '<p>Body</p>',
+    cta: { text: 'Go', url: 'https://x' },
+  });
   assert.match(html, /^<!DOCTYPE html>/);
   assert.match(html, /background:#000/); // dark
   assert.ok(html.includes('Christopher Gilbert Amell'));
@@ -36,7 +47,9 @@ test('every perk has an unlock email; unknown perk → null', () => {
     assert.ok(e.html.includes('Christopher Gilbert Amell'));
   }
   // the 5 perks we expect
-  ['event', 'podcast', 'chat', 'voting', 'credit'].forEach((k) => assert.ok(UNLOCK_KEYS.includes(k), `expected perk ${k}`));
+  ['event', 'podcast', 'chat', 'voting', 'credit'].forEach((k) =>
+    assert.ok(UNLOCK_KEYS.includes(k), `expected perk ${k}`),
+  );
   assert.strictEqual(unlockEmail('Ana', 'nope'), null);
 });
 

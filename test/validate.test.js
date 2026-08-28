@@ -12,7 +12,8 @@ import { AppError } from '../src/middleware/errorHandler.js';
 // Satisfy src/config/env.js (validates process.env) for the app import below.
 process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-dummy';
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
-process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
+process.env.SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role';
 process.env.SUBMISSION_PASSCODE = process.env.SUBMISSION_PASSCODE || '0000';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dummy-jwt-secret-sixteen-plus';
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || 're_dummy';
@@ -28,7 +29,10 @@ const boundedSchema = z.object({
 function run(mw, req) {
   let err;
   let called = false;
-  mw(req, {}, (e) => { called = true; err = e; });
+  mw(req, {}, (e) => {
+    called = true;
+    err = e;
+  });
   assert.ok(called, 'next() was called');
   return err;
 }
@@ -102,9 +106,11 @@ async function withServer(fn) {
   await new Promise((r) => server.once('listening', r));
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
-    await fn((path) => fetch(`${base}${path}`, {
-      headers: { authorization: `Bearer ${portalToken}` },
-    }));
+    await fn((path) =>
+      fetch(`${base}${path}`, {
+        headers: { authorization: `Bearer ${portalToken}` },
+      }),
+    );
   } finally {
     await new Promise((r) => server.close(r));
   }
@@ -131,10 +137,7 @@ test('GET /scripts and /analytics/summary reject bad numerics with a clear 400',
 
 test('GET /reads/status requires two UUIDs — malformed ids are a 400, not a silent miss', async () => {
   await withServer(async (get) => {
-    for (const path of [
-      '/reads/status',
-      '/reads/status?script=not-a-uuid&reader=also-not',
-    ]) {
+    for (const path of ['/reads/status', '/reads/status?script=not-a-uuid&reader=also-not']) {
       const res = await get(path);
       assert.equal(res.status, 400, `${path} → 400`);
       assert.equal((await res.json()).code, 'invalid_query');
@@ -153,9 +156,14 @@ test('validate middleware is mounted on the migrated routes', async () => {
   ];
   for (const [mod, path, method] of checks) {
     const router = (await import(mod)).default;
-    const layer = router.stack.find((l) => l.route && l.route.path === path && l.route.methods[method]);
+    const layer = router.stack.find(
+      (l) => l.route && l.route.path === path && l.route.methods[method],
+    );
     assert.ok(layer, `${mod} ${method.toUpperCase()} ${path} is mounted`);
     const names = layer.route.stack.map((s) => s.name);
-    assert.ok(names.includes('validate'), `${path} has validate attached (saw: ${names.join(', ')})`);
+    assert.ok(
+      names.includes('validate'),
+      `${path} has validate attached (saw: ${names.join(', ')})`,
+    );
   }
 });

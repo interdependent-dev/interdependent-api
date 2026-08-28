@@ -150,14 +150,14 @@ One-off admin and maintenance tools. All are env-sensitive (run with
 comment states its purpose and re-run safety. The `_`-prefixed ones are
 one-off/situational; the unprefixed ones are durable tooling.
 
-| Script | Purpose | Re-run safety |
-| --- | --- | --- |
-| `migrate.mjs` | Versioned migration runner (see above) | Safe — ledger makes it a no-op when current |
-| `gen-oa-sections.mjs` | Generate the counsel corpus from the studio repo's transcription | Safe — regenerates output file; fails loud |
-| `_state.mjs` | Dump account state from the 2026-06 account migration | Safe — read-only |
-| `_verify_auth_migration.mjs` | Verify the email/recovery migration is live | Safe — read-only |
-| `_smoke.mjs` | Live prod smoke test of email/recovery/add-device | Safe — throwaway reader, cleans up after itself (hits prod) |
-| `_create_avatar_bucket.mjs` | Create the `reader-avatars` storage bucket | Safe — idempotent |
-| `_backfill_reader_emails.mjs` | One-time reader recovery-email backfill | Dry-run by default; `APPLY=1` writes; harmless but pointless re-run |
-| `_remove_rejected.mjs` | One-time backup + purge of rejected submissions | **Destructive** — dry-run by default; `APPLY=1` deletes |
-| `_xp_serve.mjs` | Local XP-page preview server on :3001 | Safe — read-only server; hardcoded local path needs editing first |
+| Script                        | Purpose                                                          | Re-run safety                                                       |
+| ----------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `migrate.mjs`                 | Versioned migration runner (see above)                           | Safe — ledger makes it a no-op when current                         |
+| `gen-oa-sections.mjs`         | Generate the counsel corpus from the studio repo's transcription | Safe — regenerates output file; fails loud                          |
+| `_state.mjs`                  | Dump account state from the 2026-06 account migration            | Safe — read-only                                                    |
+| `_verify_auth_migration.mjs`  | Verify the email/recovery migration is live                      | Safe — read-only                                                    |
+| `_smoke.mjs`                  | Live prod smoke test of email/recovery/add-device                | Safe — throwaway reader, cleans up after itself (hits prod)         |
+| `_create_avatar_bucket.mjs`   | Create the `reader-avatars` storage bucket                       | Safe — idempotent                                                   |
+| `_backfill_reader_emails.mjs` | One-time reader recovery-email backfill                          | Dry-run by default; `APPLY=1` writes; harmless but pointless re-run |
+| `_remove_rejected.mjs`        | One-time backup + purge of rejected submissions                  | **Destructive** — dry-run by default; `APPLY=1` deletes             |
+| `_xp_serve.mjs`               | Local XP-page preview server on :3001                            | Safe — read-only server; hardcoded local path needs editing first   |

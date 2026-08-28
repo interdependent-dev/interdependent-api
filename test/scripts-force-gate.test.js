@@ -72,28 +72,40 @@ test('force retry: 403 for an anonymous portal caller (no reader session)', asyn
 });
 
 test('force retry: 403 for a non-curator reader', async () => {
-  const { status, body } = await post('/scripts/s1/retry?force=1', { readerId: 'r-plain', handle: 'plain-reader' });
+  const { status, body } = await post('/scripts/s1/retry?force=1', {
+    readerId: 'r-plain',
+    handle: 'plain-reader',
+  });
   assert.equal(status, 403);
   assert.equal(body.code, 'curator_required');
 });
 
 test('force logline: 403 for a non-curator reader, any truthy force value', async () => {
   for (const qs of ['force=1', 'force=true']) {
-    const { status, body } = await post(`/scripts/s1/logline?${qs}`, { readerId: 'r-plain2', handle: 'plain-reader-2' });
+    const { status, body } = await post(`/scripts/s1/logline?${qs}`, {
+      readerId: 'r-plain2',
+      handle: 'plain-reader-2',
+    });
     assert.equal(status, 403, qs);
     assert.equal(body.code, 'curator_required');
   }
 });
 
 test('force retry: staff/curator passes the gate', async () => {
-  const { status } = await post('/scripts/s1/retry?force=1', { readerId: 'r-staff', handle: 'staff-admin' });
+  const { status } = await post('/scripts/s1/retry?force=1', {
+    readerId: 'r-staff',
+    handle: 'staff-admin',
+  });
   // Past auth + curator gate, the handler hits the (unreachable) database — any
   // 5xx proves the request was allowed through; 401/403/429 would mean gated.
   assert.ok(![401, 403, 429].includes(status), `expected gate pass, got ${status}`);
 });
 
 test('force logline: staff/curator passes the gate', async () => {
-  const { status } = await post('/scripts/s1/logline?force=1', { readerId: 'r-staff', handle: 'staff-admin' });
+  const { status } = await post('/scripts/s1/logline?force=1', {
+    readerId: 'r-staff',
+    handle: 'staff-admin',
+  });
   assert.ok(![401, 403, 429].includes(status), `expected gate pass, got ${status}`);
 });
 
@@ -119,6 +131,9 @@ test('11th rapid request from one user returns 429 — even for a curator', asyn
 });
 
 test('the limit is per-user: another reader is not starved by the exhausted one', async () => {
-  const { status } = await post('/scripts/s1/retry?force=1', { readerId: 'r-fresh', handle: 'fresh-reader' });
+  const { status } = await post('/scripts/s1/retry?force=1', {
+    readerId: 'r-fresh',
+    handle: 'fresh-reader',
+  });
   assert.equal(status, 403); // non-curator → gated, but NOT 429
 });

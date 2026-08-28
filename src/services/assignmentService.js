@@ -5,7 +5,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabaseClient.js';
-import { partitionAssignments, earliestFeedbackByScript, isDuplicateError } from '../lib/assignments.js';
+import {
+  partitionAssignments,
+  earliestFeedbackByScript,
+  isDuplicateError,
+} from '../lib/assignments.js';
 
 // Create an assignment. Throws with `.duplicate = true` on the UNIQUE
 // (reader_id, script_id) violation so the route can answer 409.
@@ -27,7 +31,9 @@ export async function createAssignment({ readerId, scriptId, assignedBy, note = 
 export async function listAssignments() {
   const { data, error } = await supabase
     .from('reader_assignments')
-    .select('id, reader_id, script_id, assigned_by, note, created_at, decided_at, readers(handle, display_name), scripts(title)')
+    .select(
+      'id, reader_id, script_id, assigned_by, note, created_at, decided_at, readers(handle, display_name), scripts(title)',
+    )
     .order('created_at', { ascending: false });
   if (error) throw new Error(`DB listAssignments: ${error.message}`);
   return data || [];
@@ -55,10 +61,7 @@ export async function getReaderAssignments(readerId) {
       .select('id, script_id, assigned_by, note, created_at, decided_at, scripts(title)')
       .eq('reader_id', readerId)
       .order('created_at', { ascending: false }),
-    supabase
-      .from('reader_feedback')
-      .select('script_id, created_at')
-      .eq('reader_id', readerId),
+    supabase.from('reader_feedback').select('script_id, created_at').eq('reader_id', readerId),
   ]);
   if (asg.error) throw new Error(`DB getReaderAssignments: ${asg.error.message}`);
   // Feedback lookup failing is non-fatal: no heal this time, state still correct.
@@ -66,14 +69,18 @@ export async function getReaderAssignments(readerId) {
   const { pending, decided, heal } = partitionAssignments(asg.data || [], feedbackAt);
   if (heal.length) {
     try {
-      await Promise.all(heal.map((h) =>
-        supabase
-          .from('reader_assignments')
-          .update({ decided_at: h.decidedAt })
-          .eq('id', h.id)
-          .is('decided_at', null),
-      ));
-    } catch { /* best-effort — next read heals again */ }
+      await Promise.all(
+        heal.map((h) =>
+          supabase
+            .from('reader_assignments')
+            .update({ decided_at: h.decidedAt })
+            .eq('id', h.id)
+            .is('decided_at', null),
+        ),
+      );
+    } catch {
+      /* best-effort — next read heals again */
+    }
   }
   return { pending, decided };
 }

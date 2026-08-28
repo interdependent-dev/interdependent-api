@@ -29,7 +29,8 @@ if (!oaSha) throw new Error('no source sha256 in deal-oa.ts provenance');
 
 /** Every `{ id: "…", kind: 'section', … }` card, in document order. */
 const cards = [];
-const idRe = /\n {6}id: "([^"]+)",\n {6}kind: '(\w+)',\n {6}mark: (null|"[^"]*"),\n {6}title: (null|"(?:[^"\\]|\\.)*"),\n {6}blocks: \[\n/g;
+const idRe =
+  /\n {6}id: "([^"]+)",\n {6}kind: '(\w+)',\n {6}mark: (null|"[^"]*"),\n {6}title: (null|"(?:[^"\\]|\\.)*"),\n {6}blocks: \[\n/g;
 
 let m;
 while ((m = idRe.exec(src))) {
@@ -81,7 +82,10 @@ const payload = cards.map((c) => ({
   mark: c.mark,
   title: c.title,
   /** The section's whole text, headings and paragraphs, in document order. */
-  text: c.blocks.map((b) => (b.kind === 'heading' ? `\n${b.text}\n` : b.text)).join('\n').trim(),
+  text: c.blocks
+    .map((b) => (b.kind === 'heading' ? `\n${b.text}\n` : b.text))
+    .join('\n')
+    .trim(),
   /** Every subsection number this section actually contains — the citation set. */
   refs: [
     ...new Set(

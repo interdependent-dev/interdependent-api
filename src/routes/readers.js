@@ -20,7 +20,12 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { requireActionToken } from '../middleware/requireActionToken.js';
 import { publicPhotoUrl } from '../services/readerService.js';
 import { readingPct, isFinishedRead } from '../lib/readGate.js';
-import { getReaderXp, getAllReaderXp, fetchXpRows, isCuratorHandle } from '../services/xpService.js';
+import {
+  getReaderXp,
+  getAllReaderXp,
+  fetchXpRows,
+  isCuratorHandle,
+} from '../services/xpService.js';
 import { getTasteMatches } from '../services/discoveryService.js';
 import { getReaderAssignments } from '../services/assignmentService.js';
 import { optionalReader } from '../middleware/optionalReader.js';
@@ -55,7 +60,7 @@ router.post('/credentials/add/complete', requireActionToken, addDeviceComplete);
 // anti-enumeration; begin/complete are gated by the one-time token itself.
 const recoverLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 5,                       // per IP — a real reader needs one or two
+  limit: 5, // per IP — a real reader needs one or two
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many recovery requests — please wait a few minutes and try again' },
@@ -67,7 +72,10 @@ router.post('/recover/complete', recoverComplete);
 // Profile photo — upload/replace this reader's avatar (multipart 'photo').
 // Action-token gated. multer holds the file in memory; surface its size/type
 // errors as a clean 400 rather than a 500.
-const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 3 * 1024 * 1024 } });
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 },
+});
 function photoUpload(req, res, next) {
   avatarUpload.single('photo')(req, res, (err) => {
     if (err) {
@@ -96,10 +104,16 @@ router.get('/list', requireAuth, async (req, res, next) => {
     const { readers, events, champions, feedback, scripts } = rows;
     const xpList = await getAllReaderXp(rows);
     const xpByReaderId = {};
-    xpList.forEach((x) => { xpByReaderId[x.readerId] = x; });
+    xpList.forEach((x) => {
+      xpByReaderId[x.readerId] = x;
+    });
 
-    const titleById = {}, pagesById = {};
-    scripts.forEach((t) => { titleById[t.id] = t.title; pagesById[t.id] = t.page_count; });
+    const titleById = {},
+      pagesById = {};
+    scripts.forEach((t) => {
+      titleById[t.id] = t.title;
+      pagesById[t.id] = t.page_count;
+    });
 
     // (reader, script) pairs the reader has championed — raw board-adds, so the
     // flag mirrors what the reader actually did (XP separately read-gates them).
@@ -141,37 +155,42 @@ router.get('/list', requireAuth, async (req, res, next) => {
       });
     }
 
-    const list = readers.map((r) => {
-      const rd = byReader[r.id] || {};
-      const handleLc = String(r.handle || '').toLowerCase();
-      const reads = Object.entries(rd).map(([sid, v]) => ({
-        id: sid,                                                // script id → clickable to its detail
-        title: titleById[sid] || 'Untitled',
-        pct: readingPct(v.depth, v.seconds, pagesById[sid]),   // honest: depth AND time
-        pages: pagesById[sid] || null,                          // total pages → render "read / total"
-        finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
-        last: v.last,
-        championed: champSet.has(`${r.id}::${sid}`),           // on this reader's board
-        recommended: recSet.has(`${handleLc}::${sid}`),        // this reader shared it on
-      })).sort((a, b) => (a.last < b.last ? 1 : -1));
-      const fb = (fbByReader[r.id] || []).sort((a, b) => (a.when < b.when ? 1 : -1));
-      const xp = xpByReaderId[r.id];
-      return {
-        handle: r.handle,
-        name: r.display_name || r.handle,
-        photoUrl: publicPhotoUrl(r.photo_path),
-        joinedAt: r.created_at || null,
-        staff: env.adminHandles.has(handleLc),   // team member (ADMIN_HANDLES)
-        totalXp: xp ? xp.totalXp : 0,            // the ordering key — no second call needed
-        recsLanded: xp ? xp.raw.recsLanded : 0,  // first tie-break (exposed for transparency)
-        reads,
-        scriptsRead: reads.length,
-        finished: reads.filter((x) => x.finished).length,
-        feedback: fb,
-      };
-    })
-      .filter((r) => r.finished >= MIN_FINISHED)   // only readers who've earned a spot
-      .sort((a, b) => b.totalXp - a.totalXp || b.recsLanded - a.recsLanded || b.finished - a.finished);
+    const list = readers
+      .map((r) => {
+        const rd = byReader[r.id] || {};
+        const handleLc = String(r.handle || '').toLowerCase();
+        const reads = Object.entries(rd)
+          .map(([sid, v]) => ({
+            id: sid, // script id → clickable to its detail
+            title: titleById[sid] || 'Untitled',
+            pct: readingPct(v.depth, v.seconds, pagesById[sid]), // honest: depth AND time
+            pages: pagesById[sid] || null, // total pages → render "read / total"
+            finished: isFinishedRead(v.depth, v.seconds, pagesById[sid]),
+            last: v.last,
+            championed: champSet.has(`${r.id}::${sid}`), // on this reader's board
+            recommended: recSet.has(`${handleLc}::${sid}`), // this reader shared it on
+          }))
+          .sort((a, b) => (a.last < b.last ? 1 : -1));
+        const fb = (fbByReader[r.id] || []).sort((a, b) => (a.when < b.when ? 1 : -1));
+        const xp = xpByReaderId[r.id];
+        return {
+          handle: r.handle,
+          name: r.display_name || r.handle,
+          photoUrl: publicPhotoUrl(r.photo_path),
+          joinedAt: r.created_at || null,
+          staff: env.adminHandles.has(handleLc), // team member (ADMIN_HANDLES)
+          totalXp: xp ? xp.totalXp : 0, // the ordering key — no second call needed
+          recsLanded: xp ? xp.raw.recsLanded : 0, // first tie-break (exposed for transparency)
+          reads,
+          scriptsRead: reads.length,
+          finished: reads.filter((x) => x.finished).length,
+          feedback: fb,
+        };
+      })
+      .filter((r) => r.finished >= MIN_FINISHED) // only readers who've earned a spot
+      .sort(
+        (a, b) => b.totalXp - a.totalXp || b.recsLanded - a.recsLanded || b.finished - a.finished,
+      );
 
     res.json({ readers: list });
   } catch (err) {
@@ -188,7 +207,8 @@ router.get('/list', requireAuth, async (req, res, next) => {
 // finished-read gate) — this endpoint only reports state.
 router.get('/me/assignments', optionalReader, async (req, res, next) => {
   try {
-    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    if (!req.reader?.id)
+      return next(new AppError('Reader session required', 401, 'reader_session_required'));
     const { pending, decided } = await getReaderAssignments(req.reader.id);
     res.set('Cache-Control', 'private, max-age=15');
     res.json({ pending, decided });
@@ -205,7 +225,8 @@ router.get('/me/assignments', optionalReader, async (req, res, next) => {
 // for when peer recs get a real write path.
 router.get('/me/inbox', optionalReader, async (req, res, next) => {
   try {
-    if (!req.reader?.id) return next(new AppError('Reader session required', 401, 'reader_session_required'));
+    if (!req.reader?.id)
+      return next(new AppError('Reader session required', 401, 'reader_session_required'));
     const { pending } = await getReaderAssignments(req.reader.id);
     res.set('Cache-Control', 'private, max-age=15');
     res.json({ items: pending.map((a) => ({ kind: 'assignment', ...a })) });
@@ -234,13 +255,16 @@ router.get('/:handle/xp', async (req, res, next) => {
 router.get('/:handle/taste', optionalReader, async (req, res, next) => {
   try {
     const handle = req.params.handle;
-    const self = req.reader?.handle && req.reader.handle.toLowerCase() === String(handle).toLowerCase();
+    const self =
+      req.reader?.handle && req.reader.handle.toLowerCase() === String(handle).toLowerCase();
     const allowed = self || (await isCuratorHandle(req.reader?.handle));
     if (!allowed) return res.json({ matches: [], canSee: false });
     const matches = await getTasteMatches(handle);
-    res.set('Cache-Control', 'private, max-age=30');  // per-reader result — private cache only
+    res.set('Cache-Control', 'private, max-age=30'); // per-reader result — private cache only
     res.json({ matches, canSee: true });
-  } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
+  } catch (err) {
+    next(err instanceof AppError ? err : new AppError(err.message, 500));
+  }
 });
 
 // Public reader profile

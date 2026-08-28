@@ -17,7 +17,12 @@ const router = Router();
 // anyone forge verified reads for any reader. Anonymous events (no/invalid
 // session) are still accepted with no reader attribution; the endpoint stays
 // always-204. Sanitization itself is pure — see lib/eventIngest.js.
-const limiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: true, legacyHeaders: false });
+const limiter = rateLimit({
+  windowMs: 60_000,
+  limit: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.post('/', limiter, optionalReader, async (req, res) => {
   try {

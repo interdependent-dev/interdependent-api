@@ -15,7 +15,9 @@ export function optionalReader(req, _res, next) {
       if (payload.purpose === 'reader_session' && payload.readerId) {
         req.reader = { id: payload.readerId, handle: payload.handle };
       }
-    } catch { /* invalid / expired → stay anonymous, no eval */ }
+    } catch {
+      /* invalid / expired → stay anonymous, no eval */
+    }
   }
   next();
 }

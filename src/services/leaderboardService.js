@@ -3,7 +3,8 @@ import { supabase } from './supabaseClient.js';
 export async function getLeaderboardByReaderId(readerId) {
   const { data, error } = await supabase
     .from('reader_leaderboard')
-    .select(`
+    .select(
+      `
       id,
       position,
       added_at,
@@ -16,7 +17,8 @@ export async function getLeaderboardByReaderId(readerId) {
         status,
         submitted_at
       )
-    `)
+    `,
+    )
     .eq('reader_id', readerId)
     .order('position', { ascending: true });
   if (error) throw new Error(`DB getLeaderboardByReaderId: ${error.message}`);
@@ -67,10 +69,7 @@ export async function removeFromLeaderboard(readerId, scriptId) {
   if (fetchErr) throw new Error(`DB removeFromLeaderboard fetch: ${fetchErr.message}`);
   if (!entry) return false;
 
-  const { error: delErr } = await supabase
-    .from('reader_leaderboard')
-    .delete()
-    .eq('id', entry.id);
+  const { error: delErr } = await supabase.from('reader_leaderboard').delete().eq('id', entry.id);
   if (delErr) throw new Error(`DB removeFromLeaderboard delete: ${delErr.message}`);
 
   // Compact positions above the deleted one so there are no gaps
@@ -84,7 +83,10 @@ export async function removeFromLeaderboard(readerId, scriptId) {
   if (above?.length) {
     await Promise.all(
       above.map((row) =>
-        supabase.from('reader_leaderboard').update({ position: row.position - 1 }).eq('id', row.id),
+        supabase
+          .from('reader_leaderboard')
+          .update({ position: row.position - 1 })
+          .eq('id', row.id),
       ),
     );
   }

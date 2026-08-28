@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { publicConfig } from '../lib/xpConfig.js';
-import { getAllReaderXp, filmCreditContenders, getFeaturedScriptId } from '../services/xpService.js';
+import {
+  getAllReaderXp,
+  filmCreditContenders,
+  getFeaturedScriptId,
+} from '../services/xpService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();

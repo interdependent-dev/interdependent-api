@@ -1,4 +1,4 @@
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { PDFParse } from 'pdf-parse';
 import { AppError } from '../middleware/errorHandler.js';
 
 /**
@@ -6,11 +6,14 @@ import { AppError } from '../middleware/errorHandler.js';
  * Returns { text, pageCount, wordCount, charCount }.
  */
 export async function extractText(buffer) {
+  const parser = new PDFParse({ data: buffer });
   let result;
   try {
-    result = await pdfParse(buffer);
+    result = await parser.getText();
   } catch (err) {
     throw new AppError(`Failed to parse PDF: ${err.message}`, 422);
+  } finally {
+    await parser.destroy().catch(() => {});
   }
 
   const text = result.text?.trim() ?? '';
@@ -23,7 +26,7 @@ export async function extractText(buffer) {
 
   return {
     text,
-    pageCount: result.numpages ?? 0,
+    pageCount: result.total ?? 0,
     wordCount,
     charCount: text.length,
   };

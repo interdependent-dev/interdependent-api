@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { optionalReader } from '../middleware/optionalReader.js';
+import { validateQuery, validateBody } from '../middleware/validate.js';
 import { isCuratorHandle } from '../services/xpService.js';
 import {
   listScripts,
@@ -49,9 +51,13 @@ function stripEval(script) {
 }
 
 // GET /scripts?limit=50&offset=0
-router.get('/', async (req, res, next) => {
-  const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 100);
-  const offset = parseInt(req.query.offset ?? '0', 10);
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).max(100000).default(0),
+});
+
+router.get('/', validateQuery(listQuerySchema), async (req, res, next) => {
+  const { limit, offset } = req.query;
 
   try {
     const canSeeEval = await isCuratorHandle(req.reader?.handle);
@@ -67,12 +73,14 @@ router.get('/', async (req, res, next) => {
 // POST /scripts/:id/surface  { surfaced?: boolean }  — a Curator/admin toggles whether
 // Readers see this script in their slate. Identity comes from the reader session token
 // (optionalReader); authority from isCuratorHandle. Defaults to surfacing (true).
-router.post('/:id/surface', async (req, res, next) => {
+const surfaceBodySchema = z.object({ surfaced: z.boolean().default(true) });
+
+router.post('/:id/surface', validateBody(surfaceBodySchema), async (req, res, next) => {
   try {
     if (!(await isCuratorHandle(req.reader?.handle))) {
       return next(new AppError('Curator access required', 403, 'curator_required'));
     }
-    const surfaced = req.body?.surfaced !== false;
+    const { surfaced } = req.body;
     const row = await setScriptSurfaced({ id: req.params.id, surfaced });
     res.json(row);
   } catch (err) {

@@ -13,6 +13,7 @@
 
 import { getAllReaderXp } from '../services/xpService.js';
 import { getFeedbackForXp, getChampions, claimNotification } from '../services/supabaseService.js';
+import { logger } from '../lib/logger.js';
 
 const [readers, feedback, champions] = await Promise.all([
   getAllReaderXp(), getFeedbackForXp(), getChampions(),
@@ -32,6 +33,8 @@ for (const r of readers) {
   }
 }
 
-console.log(`Seeded ${seeded} notification claims across ${readers.length} scored readers ` +
-  `(${hasFeedback.size} with feedback, ${hasChampion.size} with champions). Re-running is safe.`);
+logger.info(
+  { seeded, readers: readers.length, withFeedback: hasFeedback.size, withChampions: hasChampion.size },
+  'Seeded notification claims — re-running is safe',
+);
 process.exit(0);

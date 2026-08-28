@@ -16,6 +16,7 @@ import { runEvaluation } from '../controllers/evaluateController.js';
 import { generateLogline } from '../services/anthropicService.js';
 import { extractSynopsis, extractGenre } from '../lib/evalSynopsis.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
 
@@ -148,7 +149,7 @@ router.post('/:id/retry', async (req, res, next) => {
       // A forced re-evaluation is an admin action — don't re-email the submitter.
       // A plain retry (first successful eval after a failure) still notifies.
       notify: req.query.force !== '1',
-    }).catch((e) => console.error('background runEvaluation (retry) failed:', e?.message || e));
+    }).catch((err) => logger.error({ scriptId: row.id, title: row.title, err }, 'background runEvaluation (retry) failed'));
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }
@@ -182,10 +183,13 @@ router.post('/:id/logline', async (req, res, next) => {
           id: row.id,
           patch: { logline: r.logline, read_verified: r.readVerified },
         }).then(() =>
-          console.log(`Logline for ${row.id} ("${row.title}") by ${r.modelUsed} (verified: ${r.readVerified})`),
+          logger.info(
+            { scriptId: row.id, title: row.title, model: r.modelUsed, readVerified: r.readVerified },
+            'Logline generated',
+          ),
         ),
       )
-      .catch((err) => console.error(`Logline for ${row.id} ("${row.title}") failed: ${err.message}`));
+      .catch((err) => logger.error({ scriptId: row.id, title: row.title, err }, 'Logline generation failed'));
   } catch (err) {
     next(err instanceof AppError ? err : new AppError(err.message, 500));
   }

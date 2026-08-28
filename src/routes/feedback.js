@@ -13,6 +13,7 @@ import { notifyReaderActivity } from '../services/xpEmailService.js';
 import { markAssignmentDecided } from '../services/assignmentService.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { UUID } from '../lib/ids.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
 
@@ -45,7 +46,9 @@ router.post('/:scriptId', requireActionToken, async (req, res, next) => {
           const path = await uploadFeedbackAudio({ scriptId, feedbackId: id, buffer: buf, ext: audioExt });
           await setFeedbackAudio({ id, audioPath: path });
         }
-      } catch (e) { console.error('feedback audio upload failed:', e.message); }
+      } catch (e) {
+        (req.log || logger).error({ scriptId, feedbackId: id, err: e }, 'feedback audio upload failed');
+      }
     }
     res.status(201).json({ id });
     // fire-and-forget: a first-review thank-you + any newly-unlocked perk emails.
@@ -54,7 +57,7 @@ router.post('/:scriptId', requireActionToken, async (req, res, next) => {
     // fire-and-forget: feedback on an ASSIGNED script decides the assignment.
     // Non-fatal — the reader's inbox self-heals on read if this write misses.
     markAssignmentDecided({ readerId: req.reader.id, scriptId })
-      .catch((e) => console.error('assignment auto-complete failed:', e.message));
+      .catch((e) => logger.error({ readerId: req.reader.id, scriptId, err: e }, 'assignment auto-complete failed'));
   } catch (err) { next(err instanceof AppError ? err : new AppError(err.message, 500)); }
 });
 

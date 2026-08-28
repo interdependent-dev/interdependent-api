@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { logger } from '../lib/logger.js';
 
 const envSchema = z.object({
   PORT: z.string().default('3001'),
@@ -28,10 +29,10 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('Invalid environment variables:');
-  parsed.error.issues.forEach((issue) => {
-    console.error(`  ${issue.path.join('.')}: ${issue.message}`);
-  });
+  logger.fatal(
+    { issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) },
+    'Invalid environment variables',
+  );
   process.exit(1);
 }
 
@@ -62,8 +63,8 @@ export const env = {
 };
 
 if (process.env.ANTHROPIC_MODEL && process.env.ANTHROPIC_MODEL.trim() !== env.anthropicModel) {
-  console.warn(
-    `ANTHROPIC_MODEL env var ('${process.env.ANTHROPIC_MODEL}') is ignored — ` +
-    `the model is pinned to '${env.anthropicModel}' in src/config/env.js`,
+  logger.warn(
+    { envVar: process.env.ANTHROPIC_MODEL, pinned: env.anthropicModel },
+    'ANTHROPIC_MODEL env var is ignored — the model is pinned in src/config/env.js',
   );
 }

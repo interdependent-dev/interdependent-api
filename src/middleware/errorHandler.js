@@ -1,3 +1,5 @@
+import { logger } from '../lib/logger.js';
+
 export class AppError extends Error {
   constructor(message, statusCode, code = null) {
     super(message);
@@ -15,6 +17,15 @@ export function errorHandler(err, req, res, next) {
   }
 
   if (err.isOperational) {
+    // Operational 5xx (e.g. an upstream write failing) still deserves a stack
+    // + request context; 4xx are client mistakes and already logged by the
+    // request line's status.
+    if (err.statusCode >= 500) {
+      (req.log || logger).error(
+        { err, method: req.method, path: req.originalUrl?.split('?')[0], status: err.statusCode },
+        'request failed',
+      );
+    }
     const body = { error: err.message };
     if (err.code) body.code = err.code;
     return res.status(err.statusCode).json(body);
@@ -30,6 +41,9 @@ export function errorHandler(err, req, res, next) {
     return res.status(400).json({ error: err.message });
   }
 
-  console.error('Unhandled error:', err);
+  (req.log || logger).error(
+    { err, method: req.method, path: req.originalUrl?.split('?')[0], status: 500 },
+    'unhandled error',
+  );
   res.status(500).json({ error: 'An unexpected error occurred' });
 }

@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { env } from '../config/env.js';
+import { logger } from '../lib/logger.js';
 import {
   createRegistrationOptions,
   finishRegistration,
@@ -300,7 +301,8 @@ export async function authComplete(req, res, next) {
     return next(new AppError(`Passkey verification failed: ${err.message}`, 401, 'passkey_verify_failed'));
   }
 
-  await updateCredentialCounter({ id: storedCredential.id, counter: authInfo.newCounter }).catch(() => {});
+  await updateCredentialCounter({ id: storedCredential.id, counter: authInfo.newCounter }).catch((err) =>
+    logger.warn({ credentialId: storedCredential.id, err }, 'updateCredentialCounter failed (non-fatal)'));
 
   // Cross-check userHandle when the browser returned one — it should decode
   // to the reader's UUID (set as userID bytes during registration).
@@ -589,7 +591,7 @@ export async function recoverRequest(req, res, next) {
     }
   } catch (err) {
     // Log, but still return the generic message so failures don't leak state.
-    console.error('recoverRequest error:', err.message);
+    logger.error({ err }, 'recoverRequest failed');
   }
 
   res.json(RECOVERY_GENERIC);

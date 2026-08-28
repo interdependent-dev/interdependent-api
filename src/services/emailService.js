@@ -1,8 +1,18 @@
 import { Resend } from 'resend';
 import { env } from '../config/env.js';
 import { translateEmail } from './anthropicService.js';
+import { logger } from '../lib/logger.js';
 
 const resend = new Resend(env.resendApiKey);
+
+// Resend's SDK reports API failures (bad key, outage, rejected recipient) as a
+// resolved { error } — it does NOT throw. Normalize to a throw here so every
+// caller's existing catch/log path actually fires instead of failing silently.
+async function sendEmail(payload) {
+  const { data, error } = await resend.emails.send(payload);
+  if (error) throw new Error(`Resend: ${error.message || error.name || JSON.stringify(error)}`);
+  return data;
+}
 
 // True when the screenplay's language is anything other than English.
 function isNonEnglish(language) {
@@ -190,7 +200,7 @@ function buildHtml({ submitterName, title, evaluationJson }) {
 export async function sendAdminAlert({ subject, message }) {
   if (!env.adminEmail) return;
   try {
-    await resend.emails.send({
+    await sendEmail({
       from: env.emailFrom,
       to: env.adminEmail,
       subject,
@@ -202,7 +212,7 @@ export async function sendAdminAlert({ subject, message }) {
       </div>`,
     });
   } catch (err) {
-    console.error('Failed to send admin alert:', err.message);
+    logger.error({ err }, 'Failed to send admin alert email');
   }
 }
 
@@ -240,13 +250,13 @@ export async function sendEvaluationEmail({ submitterName, submitterEmail, title
       const t = await translateEmail({ subject, html, language: evaluationJson.language });
       writerSubject = t.subject; writerHtml = t.html;
     } catch (err) {
-      console.error(`Email translation to '${evaluationJson.language}' failed — sending English:`, err.message);
+      logger.error({ language: evaluationJson.language, title, err }, 'Email translation failed — sending English');
     }
   }
 
-  const send = (to, subj, body) => resend.emails.send({
+  const send = (to, subj, body) => sendEmail({
     from: env.emailFrom, to, subject: subj, html: body, attachments,
-  }).catch((err) => console.error(`Failed to send evaluation email to ${to}:`, err.message));
+  }).catch((err) => logger.error({ title, err }, 'Failed to send evaluation email'));
 
   if (writerHtml !== html) {
     // translated writer copy + English admin copy
@@ -263,7 +273,7 @@ export async function sendEvaluationEmail({ submitterName, submitterEmail, title
 export async function sendFailureAlert({ title, submitterName, submitterEmail, reason }) {
   if (!env.adminEmail) return;
   try {
-    await resend.emails.send({
+    await sendEmail({
       from: env.emailFrom,
       to: [env.adminEmail],
       subject: `[ERROR] Screenplay evaluation failed — ${title}`,
@@ -274,7 +284,7 @@ export async function sendFailureAlert({ title, submitterName, submitterEmail, r
         Check <code>https://interdependent-api.onrender.com/health?deep=1</code> for model/API status.</p>`,
     });
   } catch (err) {
-    console.error('Failed to send failure alert:', err.message);
+    logger.error({ title, err }, 'Failed to send failure-alert email');
   }
 }
 
@@ -318,9 +328,9 @@ export async function sendRevisionRequest({ submitterName, submitterEmail, title
   const adminEmail = env.adminEmail && env.adminEmail !== submitterEmail ? env.adminEmail : null;
   const to = adminEmail ? [submitterEmail, adminEmail] : [submitterEmail];
   try {
-    await resend.emails.send({ from: env.emailFrom, to, subject, html });
+    await sendEmail({ from: env.emailFrom, to, subject, html });
   } catch (err) {
-    console.error(`Failed to send revision request to ${submitterEmail}:`, err.message);
+    logger.error({ title, kind, err }, 'Failed to send revision-request email');
   }
 }
 
@@ -359,9 +369,9 @@ export async function sendRecoveryEmail({ to, displayName, handle, recoverUrl, e
 </body></html>`;
 
   try {
-    await resend.emails.send({ from: env.emailFrom, to, subject, html });
+    await sendEmail({ from: env.emailFrom, to, subject, html });
   } catch (err) {
-    console.error(`Failed to send recovery email to ${to}:`, err.message);
+    logger.error({ err }, 'Failed to send recovery email');
     throw err;
   }
 }

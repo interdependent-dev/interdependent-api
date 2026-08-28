@@ -17,6 +17,7 @@ import { getReaderById } from './readerService.js';
 import { claimNotification } from './supabaseService.js';
 import { getReaderXp } from './xpService.js';
 import { feedbackEmail, championEmail, unlockEmail } from '../lib/xpEmailTemplates.js';
+import { logger } from '../lib/logger.js';
 
 const resend = new Resend(env.resendApiKey);
 // From the founder, so it reads as a personal note.
@@ -25,9 +26,12 @@ const FROM = `Christopher Amell · INTERDEPENDENT <${env.emailFrom}>`;
 async function send(to, email) {
   if (!email) return;
   try {
-    await resend.emails.send({ from: FROM, to, subject: email.subject, html: email.html });
+    // Resend reports API failures as a resolved { error }, not a throw —
+    // surface it so a bad key/outage lands in the catch below, not silence.
+    const { error } = await resend.emails.send({ from: FROM, to, subject: email.subject, html: email.html });
+    if (error) throw new Error(`Resend: ${error.message || error.name}`);
   } catch (err) {
-    console.error(`XP email "${email.subject}" → ${to} failed:`, err.message);
+    logger.error({ subject: email.subject, err }, 'XP email send failed');
   }
 }
 
@@ -62,6 +66,6 @@ export async function notifyReaderActivity({ readerId, handle, kind, scriptTitle
       if (top) await send(reader.email, unlockEmail(name, top.key));
     }
   } catch (err) {
-    console.error('notifyReaderActivity error:', err.message);
+    logger.error({ readerId, kind, err }, 'notifyReaderActivity failed');
   }
 }

@@ -59,20 +59,22 @@ function bootEnvJs(overrides) {
   });
 }
 
+// The guard logs through pino, which writes JSON to STDOUT (Render captures
+// stdout) — check both streams so the assertion is about the message, not the fd.
 test('placeholder JWT_SECRET logs a loud warning outside production', () => {
   const res = bootEnvJs({ JWT_SECRET: 'change-me-generate-a-real-secret' });
-  assert.strictEqual(res.status, 0, res.stderr);
-  assert.match(res.stderr, /JWT_SECRET looks like a placeholder/);
+  assert.strictEqual(res.status, 0, res.stdout + res.stderr);
+  assert.match(res.stdout + res.stderr, /JWT_SECRET looks like a placeholder/);
 });
 
 test('placeholder JWT_SECRET refuses to start when NODE_ENV=production', () => {
   const res = bootEnvJs({ JWT_SECRET: 'change-me-generate-a-real-secret', NODE_ENV: 'production' });
   assert.strictEqual(res.status, 1);
-  assert.match(res.stderr, /Refusing to start in production/);
+  assert.match(res.stdout + res.stderr, /Refusing to start in production/);
 });
 
 test('a real JWT_SECRET boots without the placeholder warning', () => {
   const res = bootEnvJs({ JWT_SECRET: 'a-genuinely-random-looking-secret-0f3b' });
-  assert.strictEqual(res.status, 0, res.stderr);
-  assert.doesNotMatch(res.stderr, /JWT_SECRET/);
+  assert.strictEqual(res.status, 0, res.stdout + res.stderr);
+  assert.doesNotMatch(res.stdout + res.stderr, /JWT_SECRET/);
 });

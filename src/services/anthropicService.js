@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { logger } from '../lib/logger.js';
 
 const { RateLimitError, AuthenticationError, APIConnectionTimeoutError } = Anthropic;
 
@@ -495,7 +496,7 @@ export async function evaluateScreenplay(scriptText) {
       // Model-specific (404/403/model 400) or transient server trouble
       // (5xx/529/connection/timeout) — log it and try the next candidate.
       const detail = `${err.status ?? err.name ?? 'error'}: ${err.message}`;
-      console.error(`Evaluation with model '${model}' failed (${detail})`);
+      logger.error({ model, err }, 'Evaluation model call failed — trying next candidate');
       failures.push(`${model} → ${detail}`);
       continue;
     }
@@ -511,12 +512,12 @@ export async function evaluateScreenplay(scriptText) {
     }
 
     if (model !== env.anthropicModel.trim()) {
-      console.warn(`Evaluation completed on fallback model '${model}' — check ANTHROPIC_MODEL ('${env.anthropicModel}')`);
+      logger.warn({ model, pinned: env.anthropicModel }, 'Evaluation completed on fallback model — check ANTHROPIC_MODEL');
     }
 
     const evaluationJson = extractJson(rawText);
     if (!evaluationJson) {
-      console.warn(`Model '${model}' returned unparseable JSON (stop_reason: ${response.stop_reason}) — storing raw text only`);
+      logger.warn({ model, stopReason: response.stop_reason }, 'Model returned unparseable JSON — storing raw text only');
       fallbackResult = fallbackResult || { rawText, evaluationJson: null, modelUsed: model };
       failures.push(`${model} → unparseable JSON`);
       continue;
@@ -531,13 +532,13 @@ export async function evaluateScreenplay(scriptText) {
     // Parsed, but the verbatim ending quote isn't in the back of the script — the
     // model may have stopped early or fabricated the ending. Prefer a verified
     // candidate; keep this flagged as a fallback and try the next model.
-    console.warn(`Model '${model}' failed the read-check (ending quote not found in script)`);
+    logger.warn({ model }, 'Model failed the read-check (ending quote not found in script)');
     failures.push(`${model} → read-check failed`);
     fallbackResult = { rawText, evaluationJson, modelUsed: model }; // a parsed result beats a null one
   }
 
   if (fallbackResult) {
-    console.warn('Returning an evaluation flagged read_verified=false — no candidate confirmed reading to the end');
+    logger.warn('Returning an evaluation flagged read_verified=false — no candidate confirmed reading to the end');
     return fallbackResult;
   }
   throw new AppError(`Evaluation failed on all models — ${failures.join('; ')}`, 502);
@@ -583,7 +584,7 @@ export async function detectTranslation(scriptText) {
       if (json && typeof json.translated === 'boolean') return json;
     } catch (err) {
       if (err instanceof Anthropic.AuthenticationError) throw err;
-      console.error(`detectTranslation: model '${model}' failed — ${err.message}`);
+      logger.error({ model, err }, 'detectTranslation model call failed');
     }
   }
   return { translated: false, confidence: 0, original_language: null, severity: 'none', evidence: [], screen_error: true };
@@ -640,7 +641,7 @@ export async function verifyRecommendation(scriptText, evaluationJson) {
       if (json && typeof json.veto === 'boolean') return { ...json, modelUsed: model };
     } catch (err) {
       if (err instanceof Anthropic.AuthenticationError) throw err;
-      console.error(`verifyRecommendation: model '${model}' failed — ${err.message}`);
+      logger.error({ model, err }, 'verifyRecommendation model call failed');
     }
   }
   return { veto: false, recommended_decision: 'RECOMMEND', severity: 'none', reasons: [], verifier_error: true };
@@ -716,7 +717,7 @@ export async function generateLogline(scriptText) {
   }
 
   if (fallback) {
-    console.warn('Returning a logline flagged read_verified=false — could not confirm a full read');
+    logger.warn('Returning a logline flagged read_verified=false — could not confirm a full read');
     return fallback;
   }
   throw new AppError(`Logline generation failed — ${failures.join('; ')}`, 502);

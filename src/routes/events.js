@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { insertReadEvent } from '../services/supabaseService.js';
 import { optionalReader } from '../middleware/optionalReader.js';
 import { sanitizeReadEvent } from '../lib/eventIngest.js';
+import { logger } from '../lib/logger.js';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.post('/', limiter, optionalReader, async (req, res) => {
     const event = sanitizeReadEvent(req.body, req.reader ? req.reader.id : null);
     if (event) await insertReadEvent(event);
   } catch (err) {
-    console.error('read_event ingest failed:', err.message);
+    (req.log || logger).error({ err }, 'read_event ingest failed');
   }
   res.status(204).end();
 });

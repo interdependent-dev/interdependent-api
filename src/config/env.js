@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { logger } from '../lib/logger.js';
 
 // Exported so test/envExample.test.js can assert .env.example covers every key.
 export const envSchema = z.object({
@@ -33,10 +34,10 @@ export const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('Invalid environment variables:');
-  parsed.error.issues.forEach((issue) => {
-    console.error(`  ${issue.path.join('.')}: ${issue.message}`);
-  });
+  logger.fatal(
+    { issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) },
+    'Invalid environment variables',
+  );
   process.exit(1);
 }
 
@@ -71,19 +72,19 @@ export const env = {
 // JWT_SECRET must be a real random secret, not a template placeholder. Names the
 // variable only — never prints the value.
 if (/change[-_ ]?me|placeholder|your[-_ ]?secret/i.test(parsed.data.JWT_SECRET)) {
-  console.error(
+  logger.error(
     'JWT_SECRET looks like a placeholder (e.g. "change-me…"). ' +
     'Set a real random secret: openssl rand -hex 32',
   );
   if (process.env.NODE_ENV === 'production') {
-    console.error('Refusing to start in production with a placeholder JWT_SECRET.');
+    logger.fatal('Refusing to start in production with a placeholder JWT_SECRET.');
     process.exit(1);
   }
 }
 
 if (process.env.ANTHROPIC_MODEL && process.env.ANTHROPIC_MODEL.trim() !== env.anthropicModel) {
-  console.warn(
-    `ANTHROPIC_MODEL env var ('${process.env.ANTHROPIC_MODEL}') is ignored — ` +
-    `the model is pinned to '${env.anthropicModel}' in src/config/env.js`,
+  logger.warn(
+    { envVar: process.env.ANTHROPIC_MODEL, pinned: env.anthropicModel },
+    'ANTHROPIC_MODEL env var is ignored — the model is pinned in src/config/env.js',
   );
 }

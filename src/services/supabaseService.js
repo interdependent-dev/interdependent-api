@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import { logger } from '../lib/logger.js';
 
 /**
  * Find a user by email or create one. Returns the user row.
@@ -243,7 +244,7 @@ export async function claimNotification(readerId, kind, ref = '') {
     .select('id');
   if (error) {
     if (!/duplicate|unique|23505/i.test(error.message)) {
-      console.error('claimNotification error:', error.message);
+      logger.error({ readerId, kind, ref, dbError: error.message }, 'claimNotification failed');
     }
     return false;
   }
@@ -293,7 +294,7 @@ export async function markScriptError({ id, reason }) {
   // Don't throw (callers run in a background path), but DO surface it — a silent
   // failure here strands the row in 'processing' and the submitter sees a spinner
   // forever.
-  if (error) console.error(`markScriptError(${id}) failed: ${error.message}`);
+  if (error) logger.error({ scriptId: id, dbError: error.message }, 'markScriptError failed');
 }
 
 /**
@@ -311,7 +312,7 @@ export async function markScriptRejected({ id, reason, detail }) {
       evaluation_json: detail ? { rejected: detail } : null,
     })
     .eq('id', id);
-  if (error) console.error(`markScriptRejected(${id}) failed: ${error.message}`);
+  if (error) logger.error({ scriptId: id, dbError: error.message }, 'markScriptRejected failed');
 }
 
 /**

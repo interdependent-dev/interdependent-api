@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { supabase } from './supabaseClient.js';
+import { logger } from '../lib/logger.js';
 
 // ─── Readers ────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,8 @@ export async function uploadReaderAvatar({ path, buffer, contentType }) {
 
 export async function deleteReaderAvatar(path) {
   if (!path) return;
-  await supabase.storage.from(AVATAR_BUCKET).remove([path]).catch(() => {});
+  await supabase.storage.from(AVATAR_BUCKET).remove([path]).catch((err) =>
+    logger.warn({ path, err }, 'deleteReaderAvatar failed (non-fatal)'));
 }
 
 export async function updateReaderPhoto({ id, photoPath }) {

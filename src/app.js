@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { corsMiddleware } from './middleware/cors.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { requestLogger } from './middleware/requestLogger.js';
 import { pingModel, candidateModels } from './services/anthropicService.js';
 import authRouter from './routes/auth.js';
 import evaluateRouter from './routes/evaluate.js';
@@ -24,7 +25,9 @@ const app = express();
 // Trust proxy headers when running behind Render / AWS ALB
 app.set('trust proxy', 1);
 
-// Global middleware
+// Global middleware — request logging first, so every request (CORS
+// rejections and 404s included) gets a requestId and a structured log line.
+app.use(requestLogger);
 app.use(corsMiddleware);
 // Reader feedback can carry a base64 voice note — parse it with a larger limit
 // BEFORE the global 100kb json parser (which would otherwise 413 the request).

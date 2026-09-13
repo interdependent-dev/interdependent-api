@@ -5,8 +5,14 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { askCounsel } from '../services/anthropic/counsel.js';
 import { sectionFor, OA_VERSION, OA_SOURCE_SHA256 } from '../lib/oaSections.js';
-
-const router = Router();
+import {
+  COUNSEL_CONTRACT,
+  COUNSEL_AVAILABILITY,
+  CounselRequestSchema,
+  makeCounselReceipt,
+  resolveCounselRequest,
+  validateCounselAnswer,
+} from '../lib/counselContract.js';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
@@ -32,9 +38,9 @@ const router = Router();
  * (generated, provenance-stamped, sha-chained back to the v1.9.0 markdown) and
  * hands the model THAT SECTION AND NOTHING ELSE. An unknown id is a 400 before
  * any token is spent, so there is no path where the desk answers with no
- * agreement behind it. There is no conversation history: every ask is one
- * question against one section, which is also why a stateless rate limit is a
- * real ceiling rather than a speed bump.
+ * agreement behind it. The opt-in counsel.v1 contract checks the full source
+ * identity, exact clause/selection, and up to three same-source prior turns.
+ * Prior prose is untrusted caller context, never an authoritative source.
  *
  * ── THE GATES, IN ORDER ───────────────────────────────────────────────────
  *
@@ -57,15 +63,17 @@ const router = Router();
    member with real questions asks a handful, and anything past twenty in ten
    minutes is a script. Deliberately NOT `skipSuccessfulRequests` — successes are
    what cost money here, unlike a passcode check where failures are the risk. */
-const counselLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    error: 'The counsel desk is answering as fast as it can — try again in a few minutes',
-  },
-});
+function createCounselLimiter() {
+  return rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: 'The counsel desk is answering as fast as it can — try again in a few minutes',
+    },
+  });
+}
 
 const AskSchema = z.object({
   sectionId: z.string().trim().min(1).max(96),
@@ -74,44 +82,88 @@ const AskSchema = z.object({
   question: z.string().trim().min(3).max(2000),
 });
 
-router.post('/', counselLimiter, requireAuth, async (req, res, next) => {
-  const parsed = AskSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    return next(
-      new AppError(`Invalid request — ${first.path.join('.') || 'body'}: ${first.message}`, 400),
-    );
-  }
-  const { sectionId, subsection, selection, question } = parsed.data;
+export function createCounselRouter({ answerQuestion = askCounsel } = {}) {
+  const router = Router();
+  router.post('/', createCounselLimiter(), requireAuth, async (req, res, next) => {
+    // An unknown explicit version must not silently fall back to legacy handling.
+    const strict = req.body?.contractVersion !== undefined;
+    const parsed = (strict ? CounselRequestSchema : AskSchema).safeParse(req.body ?? {});
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return next(
+        new AppError(`Invalid request — ${first.path.join('.') || 'body'}: ${first.message}`, 400),
+      );
+    }
+    if (strict) {
+      try {
+        const resolved = resolveCounselRequest(parsed.data);
+        const result = await answerQuestion(resolved);
+        const { answer, support, citations } = validateCounselAnswer(
+          { answer: result.answer, support: result.support, citations: result.citations },
+          resolved.section,
+        );
+        return res.json({
+          ok: true,
+          contractVersion: COUNSEL_CONTRACT,
+          answer,
+          support,
+          section: {
+            id: resolved.section.id,
+            mark: resolved.section.mark,
+            title: resolved.section.title,
+          },
+          subsection: resolved.subsection,
+          model: result.model,
+          receipt: makeCounselReceipt(resolved.section, citations),
+          availability: COUNSEL_AVAILABILITY,
+        });
+      } catch (err) {
+        return next(
+          err instanceof AppError ? err : new AppError('The counsel desk could not answer', 502),
+        );
+      }
+    }
+    const { sectionId, subsection, selection, question } = parsed.data;
 
-  const section = sectionFor(sectionId);
-  if (!section) {
-    return next(
-      new AppError(`No such section of the agreement: ${sectionId}`, 400, 'unknown_section'),
-    );
-  }
+    const section = sectionFor(sectionId);
+    if (!section) {
+      return next(
+        new AppError(`No such section of the agreement: ${sectionId}`, 400, 'unknown_section'),
+      );
+    }
 
-  /* A subsection the member's own gesture produced must belong to the section
+    /* A subsection the member's own gesture produced must belong to the section
      they are reading. It is a hint to the model, not a lookup key, so a stray
      one is dropped rather than refused — but it is never passed through blind. */
-  const ref =
-    subsection && section.refs.some((r) => r === subsection || subsection.startsWith(`${r}.`))
-      ? subsection
-      : null;
+    const ref =
+      subsection && section.refs.some((r) => r === subsection || subsection.startsWith(`${r}.`))
+        ? subsection
+        : null;
 
-  try {
-    const { answer, model } = await askCounsel({ section, subsection: ref, selection, question });
-    res.json({
-      ok: true,
-      answer,
-      section: { id: section.id, mark: section.mark, title: section.title },
-      subsection: ref,
-      model,
-      provenance: { agreement: OA_VERSION, sha256: OA_SOURCE_SHA256 },
-    });
-  } catch (err) {
-    next(err instanceof AppError ? err : new AppError(err.message, 502));
-  }
-});
+    try {
+      const { answer, model } = await answerQuestion({
+        section,
+        subsection: ref,
+        selection,
+        question,
+      });
+      res.json({
+        ok: true,
+        answer,
+        section: { id: section.id, mark: section.mark, title: section.title },
+        subsection: ref,
+        model,
+        provenance: { agreement: OA_VERSION, sha256: OA_SOURCE_SHA256 },
+        contractVersion: 'legacy',
+        support: 'legacy-unverified',
+        receipt: null,
+        availability: COUNSEL_AVAILABILITY,
+      });
+    } catch (err) {
+      next(err instanceof AppError ? err : new AppError(err.message, 502));
+    }
+  });
+  return router;
+}
 
-export default router;
+export default createCounselRouter();

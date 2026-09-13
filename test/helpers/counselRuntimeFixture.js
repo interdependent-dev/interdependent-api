@@ -37,6 +37,7 @@ export function fixture(texts = ['A. Fixture alpha apples.\nB. Fixture beta berr
     },
     question: 'Explain this fixture.',
     selection: null,
+    relatedOASections: [],
     runtimePackages: [{ source: clone(source), sections: clone(sections) }],
     context: [],
   };

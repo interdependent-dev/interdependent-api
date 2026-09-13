@@ -129,7 +129,15 @@ legal status. Real answer quality and the owner's voice still require evaluation
 - 400: invalid shape/version, `unknown_section`, `unknown_clause`.
 - 409: `source_mismatch`, `selection_mismatch`, `history_source_mismatch`.
 - 401/429: existing auth/rate refusal.
-- 502: `invalid_counsel_citations` or existing provider failure; no answer receipt.
+- 502: `invalid_counsel_citations`, `counsel_provider_auth_failed` or other provider
+  failure; no answer receipt.
+- 503: `counsel_provider_rate_limited` / `counsel_provider_credits_exhausted`.
+
+Counsel fatal-provider errors stop model fallback and contain only sanitized
+Counsel wording, with no saved-submission or team-notification claims. This also
+applies to legacy Counsel; the separate evaluation flow is unchanged. Malformed
+JSON is a sanitized 400 without parser/body logging; oversized parser input
+remains 413. Identifiable Counsel parser refusals are private/no-store.
 
 Legacy requests without `contractVersion` preserve their original answer/section/
 model/provenance fields, but add `contractVersion:"legacy"`,

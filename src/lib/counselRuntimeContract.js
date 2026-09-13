@@ -83,6 +83,8 @@ export const RuntimeCounselRequestSchema = z
     target: Target,
     question: z.string().trim().min(3).max(2000),
     selection: z.string().min(1).max(4000).nullable().optional(),
+    // Exact API-owned IDs only; OA source text is never accepted from callers.
+    relatedOASections: z.array(z.string().min(1).max(96)).max(MAX_SECTIONS).default([]),
     runtimePackages: z
       .array(
         z
@@ -246,9 +248,16 @@ export function resolveRuntimeCounselRequest(request, manifests = RUNTIME_SOURCE
       records.push(runtimeRecord(manifest, descriptor, section.text));
     }
   }
-  if (request.target.sourceId === COUNSEL_SOURCE_ID) {
-    const section = sectionFor(request.target.sectionId);
-    if (!section || section.id !== request.target.sectionId) throw fault('unknown_section', 400);
+  const oaSections = [
+    ...(request.target.sourceId === COUNSEL_SOURCE_ID ? [request.target.sectionId] : []),
+    ...(request.relatedOASections ?? []),
+  ];
+  for (const sectionId of oaSections) {
+    const id = key(COUNSEL_SOURCE_ID, sectionId);
+    if (seen.has(id)) throw fault('duplicate_source_section', 400);
+    seen.add(id);
+    const section = sectionFor(sectionId);
+    if (!section || section.id !== sectionId) throw fault('unknown_section', 400);
     records.push(oaRecord(section));
   }
   if (records.length > MAX_SECTIONS) throw fault('too_many_source_sections', 400);

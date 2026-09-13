@@ -5,6 +5,7 @@ import {
   resolveRuntimeCounselRequest,
   validateRuntimeCounselAnswer,
   makeRuntimeCounselReceipt,
+  MAX_RESOLVED_SOURCE_BYTES,
 } from '../src/lib/counselRuntimeContract.js';
 import {
   COUNSEL_CORPUS_DIGEST,
@@ -166,6 +167,136 @@ test('OA targets use the existing server corpus and can include a bounded verifi
   f.request.target = oaTarget('oa-s2');
   f.request.target.clause = '2.5.3.1';
   assert.throws(() => resolve(f.request, f.manifest), { code: 'unknown_clause' });
+});
+
+test('OA and runtime targets can include exact API-owned related OA sections without supplied OA text', () => {
+  const f = fixture();
+  f.request.relatedOASections = ['oa-s1', 'oa-s0'];
+  const eap = resolve(f.request, f.manifest);
+  assert.equal(eap.records.length, 3);
+  for (const sectionId of f.request.relatedOASections) {
+    const record = eap.records.find((r) => r.sectionId === sectionId);
+    assert.equal(record.text, sectionFor(sectionId).text);
+    assert.equal(record.source.sourceId, COUNSEL_SOURCE_ID);
+  }
+  f.request.target = oaTarget('oa-s2');
+  f.request.runtimePackages = [];
+  const oa = resolve(f.request, f.manifest);
+  assert.deepEqual(
+    oa.sources.map((r) => r.sectionId),
+    ['oa-s0', 'oa-s1', 'oa-s2'],
+  );
+  assert.equal(oa.records.find((r) => r.sectionId === 'oa-s2').scope('2.5.3.1'), null);
+  assert.deepEqual(
+    RuntimeCounselRequestSchema.parse({ ...f.request, relatedOASections: undefined })
+      .relatedOASections,
+    [],
+  );
+});
+
+test('related OA IDs reject aliases, whitespace, unknowns, duplicates and attempted text authority', () => {
+  const f = fixture();
+  for (const sectionId of ['0', ' oa-s0', 'OA-S0', 'oa-s999', '__proto__']) {
+    assert.throws(() => resolve({ ...f.request, relatedOASections: [sectionId] }, f.manifest), {
+      statusCode: 400,
+      code: 'unknown_section',
+    });
+  }
+  assert.throws(
+    () => resolve({ ...f.request, relatedOASections: ['oa-s0', 'oa-s0'] }, f.manifest),
+    {
+      statusCode: 400,
+      code: 'duplicate_source_section',
+    },
+  );
+  assert.throws(
+    () => resolve({ ...f.request, target: oaTarget(), relatedOASections: ['oa-s0'] }, f.manifest),
+    {
+      statusCode: 400,
+      code: 'duplicate_source_section',
+    },
+  );
+  assert.equal(
+    RuntimeCounselRequestSchema.safeParse({
+      ...f.request,
+      relatedOASections: [{ sectionId: 'oa-s0', text: 'A. Caller supplied text.' }],
+    }).success,
+    false,
+  );
+});
+
+test('the four-section limit includes related OA, an OA target and every runtime section', () => {
+  const f = fixture(['A. First fixture.', 'A. Second fixture.']);
+  f.request.relatedOASections = ['oa-s0', 'oa-s1'];
+  assert.equal(resolve(f.request, f.manifest).records.length, 4);
+  assert.throws(() => resolve({ ...f.request, target: oaTarget('oa-s2') }, f.manifest), {
+    statusCode: 400,
+    code: 'too_many_source_sections',
+  });
+  f.request.runtimePackages = [];
+  f.request.target = oaTarget('oa-s0');
+  f.request.relatedOASections = ['oa-s1', 'oa-s2', 'oa-s3'];
+  assert.equal(resolve(f.request, f.manifest).records.length, 4);
+  assert.throws(
+    () =>
+      resolve(
+        { ...f.request, relatedOASections: [...f.request.relatedOASections, 'oa-s4'] },
+        f.manifest,
+      ),
+    {
+      statusCode: 400,
+      code: 'too_many_source_sections',
+    },
+  );
+});
+
+test('related OA text shares the exact 128 KiB boundary with runtime text', () => {
+  const relatedBytes = Buffer.byteLength(sectionFor('oa-s3').text, 'utf8');
+  const runtimeBytes = MAX_RESOLVED_SOURCE_BYTES - relatedBytes;
+  for (const extra of [0, 1]) {
+    const f = fixture(['A. ' + 'x'.repeat(runtimeBytes - 3 + extra)]);
+    f.request.relatedOASections = ['oa-s3'];
+    if (extra)
+      assert.throws(() => resolve(f.request, f.manifest), {
+        statusCode: 413,
+        code: 'resolved_sources_too_large',
+      });
+    else
+      assert.equal(
+        resolve(f.request, f.manifest).records.reduce(
+          (total, record) => total + Buffer.byteLength(record.text, 'utf8'),
+          0,
+        ),
+        MAX_RESOLVED_SOURCE_BYTES,
+      );
+  }
+});
+
+test('related OA order is canonical but adding, removing or changing a related source invalidates history', () => {
+  const f = fixture();
+  f.request.relatedOASections = ['oa-s1', 'oa-s0'];
+  const first = resolve(f.request, f.manifest);
+  const relatedCitation = {
+    sourceId: COUNSEL_SOURCE_ID,
+    sectionId: 'oa-s0',
+    clause: null,
+    quote: sectionFor('oa-s0').text.slice(0, 80),
+  };
+  const citations = [f.answer.citations[0], relatedCitation];
+  validateRuntimeCounselAnswer({ ...f.answer, citations }, first);
+  const receipt = makeRuntimeCounselReceipt(first, citations);
+  f.request.context = [{ question: f.request.question, answer: f.answer.answer, receipt }];
+  f.request.relatedOASections.reverse();
+  assert.equal(resolve(f.request, f.manifest).scopeDigest, receipt.scopeDigest);
+  for (const relatedOASections of [['oa-s0'], ['oa-s0', 'oa-s2'], ['oa-s0', 'oa-s1', 'oa-s2']]) {
+    assert.throws(() => resolve({ ...f.request, relatedOASections }, f.manifest), {
+      code: 'history_source_mismatch',
+    });
+  }
+  const noRelated = resolve({ ...f.request, relatedOASections: [], context: [] }, f.manifest);
+  assert.throws(() => validateRuntimeCounselAnswer({ ...f.answer, citations }, noRelated), {
+    code: 'invalid_counsel_citations',
+  });
 });
 
 test('section count, normalized request bytes and resolved model context are independently bounded', () => {

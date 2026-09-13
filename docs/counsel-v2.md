@@ -25,6 +25,7 @@ a client component, static asset, source map served to browsers, or public Git.
   },
   "question": "Explain the selected provision.",
   "selection": null,
+  "relatedOASections": ["oa-s5"],
   "runtimePackages": [
     {
       "source": {
@@ -50,6 +51,13 @@ existing API corpus. An EAP target uses the same target shape with its EAP sourc
 hashes and supplied section ID. A registered package cannot be uploaded as a
 replacement OA corpus. Missing target text is a refusal, not a retrieval fallback.
 
+`relatedOASections` is optional (default `[]`). It accepts only exact canonical
+API-owned section IDs, such as `oa-s5`, with no text or caller-provided metadata.
+Both OA and EAP targets can include these related OA sections. Numeric aliases,
+unknown IDs, duplicate IDs, and repeating the OA target as a related section are
+refused. These records share the same count/byte limits, citation checks, sorted
+receipt and follow-up scope as the target and supplied runtime sections.
+
 The EAP package contains exact numbered sections I–XVII, excluding frontmatter,
 preamble, table of contents and the defined-terms index. Its raw document hash
 identifies the original review file; the package hash is SHA-256 of UTF-8
@@ -68,9 +76,12 @@ identity and scope, not a semantic judgment that a chosen section is relevant.
 ## Bounds and receipts
 
 - At most two runtime packages and **four total sections**, including the
-  API-resolved OA target; no duplicate package/section IDs.
+  target, all runtime sections and all related OA sections; no duplicate
+  package/section IDs.
 - Normalized JSON request: at most **96 KiB** UTF-8; existing app parser remains
-  **100 KiB** on the wire. Oversize parser errors now return sanitized 413.
+  **100 KiB** on the wire. Oversize parser errors return sanitized 413; malformed
+  JSON returns sanitized 400 before route validation, without logging the parser
+  error, body or parse details. Identifiable Counsel parser refusals are private/no-store.
 - Resolved source text (including server OA): at most **128 KiB** UTF-8.
 - Question: 3–2,000 characters; selection: 1–4,000 when present. Three prior
   turns maximum, each question 3–2,000 and answer 1–8,000 characters.
@@ -118,8 +129,14 @@ attribution or agent-memory claim can create that authority.
 Malformed requests/duplicate IDs/unknown section or clause: 400. Identity,
 section-byte, target, selection or history mismatch: 409. Byte ceilings: 413.
 Auth/rate refusal: existing 401/429. Invalid manifest/intent authority: 503.
-Invalid model JSON/citations: 502; provider failures return a generic 502 without
-echoing arbitrary upstream details that could contain private source text.
+Invalid model JSON/citations: 502. Provider authentication failure returns 502
+(`counsel_provider_auth_failed`); provider rate/credit failures return 503
+(`counsel_provider_rate_limited` / `counsel_provider_credits_exhausted`). These
+fatal conditions stop the model ladder after the first attempt. Other provider
+failures return generic 502 after bounded fallback. No provider details that
+could contain private source text are echoed or retained in the surfaced error.
+Counsel does not claim a question was saved or anyone was alerted. This wording
+also applies to V1/legacy Counsel; the separate evaluation flow is unchanged.
 
 V2 responses are private/no-store. Existing request logging records method,
 path, status and latency, not source/question bodies. Preserve that boundary.

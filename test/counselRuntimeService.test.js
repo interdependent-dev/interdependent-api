@@ -10,6 +10,8 @@ process.env.RESEND_API_KEY = 're_dummy';
 process.env.EMAIL_FROM = 'noreply@interdependent.studio';
 const { askRuntimeCounsel } = await import('../src/services/anthropic/counselRuntime.js');
 const { anthropic, candidateModels } = await import('../src/services/anthropic/models.js');
+const { COUNSEL_SOURCE_ID } = await import('../src/lib/counselContract.js');
+const { sectionFor } = await import('../src/lib/oaSections.js');
 const { resolveRuntimeCounselRequest, RuntimeCounselRequestSchema, makeRuntimeCounselReceipt } =
   await import('../src/lib/counselRuntimeContract.js');
 const response = (value) => ({
@@ -49,6 +51,36 @@ test('only verified supplied records enter model data; source/history never ente
     return response(f.answer);
   });
   assert.equal((await askRuntimeCounsel(resolve(f))).support, 'cited');
+});
+
+test('runtime target and API-owned related OA remain distinct model sources and checkable citations', async (t) => {
+  const f = fixture();
+  f.request.relatedOASections = ['oa-s0'];
+  const related = {
+    sourceId: COUNSEL_SOURCE_ID,
+    sectionId: 'oa-s0',
+    clause: null,
+    quote: sectionFor('oa-s0').text.slice(0, 80),
+  };
+  mock(t, async (payload) => {
+    const data = JSON.parse(payload.messages[0].content);
+    assert.equal(data.target.sourceId, f.manifest.source.sourceId);
+    assert.equal(data.sources.length, 2);
+    assert.equal(
+      data.sources.find((source) => source.sourceId === COUNSEL_SOURCE_ID).text,
+      sectionFor('oa-s0').text,
+    );
+    assert.equal(
+      data.sources.find((source) => source.sourceId === f.manifest.source.sourceId).text,
+      f.request.runtimePackages[0].sections[0].text,
+    );
+    return response({ ...f.answer, citations: [f.answer.citations[0], related] });
+  });
+  const resolved = resolve(f);
+  const result = await askRuntimeCounsel(resolved);
+  const receipt = makeRuntimeCounselReceipt(resolved, result.citations);
+  assert.equal(receipt.sources.length, 2);
+  assert.deepEqual(receipt.citations, [f.answer.citations[0], related]);
 });
 
 test('malformed provider responses and cross-clause quotes cannot gain a receipt through fallback', async (t) => {

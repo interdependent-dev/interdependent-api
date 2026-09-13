@@ -11,8 +11,16 @@ export class AppError extends Error {
 
 // eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, next) {
-  // express.json rejects oversized bodies before route validation. Preserve
-  // the size refusal without logging or returning the submitted source text.
+  // Parser errors occur before route middleware. They may retain the entire
+  // submitted body (including private source text), so never log the error.
+  if (err.type === 'entity.parse.failed' || err.type === 'entity.too.large') {
+    if (/^\/counsel(?:\/|$)/i.test(req.originalUrl?.split('?')[0] ?? '')) {
+      res.set('Cache-Control', 'private, no-store');
+    }
+  }
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Request body is not valid JSON', code: 'invalid_json' });
+  }
   if (err.type === 'entity.too.large') {
     return res
       .status(413)

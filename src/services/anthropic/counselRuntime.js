@@ -1,6 +1,7 @@
 import { AppError } from '../../middleware/errorHandler.js';
 import { validateRuntimeCounselAnswer } from '../../lib/counselRuntimeContract.js';
-import { anthropic, candidateModels, classifyFatal } from './models.js';
+import { anthropic, candidateModels } from './models.js';
+import { classifyCounselFatal } from './counselErrors.js';
 import { MATLOCK_PROMPT } from './counsel.js';
 
 const RUNTIME_PROMPT = `
@@ -63,7 +64,7 @@ export async function askRuntimeCounsel(resolved) {
       }
       return { ...validateRuntimeCounselAnswer(value, resolved), model };
     } catch (err) {
-      const fatal = classifyFatal(err);
+      const fatal = classifyCounselFatal(err);
       if (fatal) throw fatal;
       if (err?.code === 'invalid_counsel_citations') invalidCitation = true;
       // Never echo an arbitrary provider error that might contain private text.

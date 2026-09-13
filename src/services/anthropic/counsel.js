@@ -1,5 +1,6 @@
 import { AppError } from '../../middleware/errorHandler.js';
-import { anthropic, candidateModels, classifyFatal } from './models.js';
+import { anthropic, candidateModels } from './models.js';
+import { classifyCounselFatal } from './counselErrors.js';
 import { COUNSEL_CONTRACT, clauseText, validateCounselAnswer } from '../../lib/counselContract.js';
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -200,7 +201,7 @@ export async function askCounsel({
       if (answer) return { answer, model };
       lastErr = new Error('empty answer');
     } catch (err) {
-      const fatal = classifyFatal(err);
+      const fatal = classifyCounselFatal(err);
       if (fatal) throw fatal;
       lastErr = err;
     }

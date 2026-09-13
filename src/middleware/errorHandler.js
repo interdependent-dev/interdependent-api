@@ -11,6 +11,13 @@ export class AppError extends Error {
 
 // eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, next) {
+  // express.json rejects oversized bodies before route validation. Preserve
+  // the size refusal without logging or returning the submitted source text.
+  if (err.type === 'entity.too.large') {
+    return res
+      .status(413)
+      .json({ error: 'Request body exceeds the allowed size', code: 'request_too_large' });
+  }
   // CORS errors arrive here from the cors middleware callback
   if (err.message?.startsWith('CORS:')) {
     return res.status(403).json({ error: err.message });

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { askCounsel } from '../services/anthropic/counsel.js';
+import { askRuntimeCounsel } from '../services/anthropic/counselRuntime.js';
 import { sectionFor, OA_VERSION, OA_SOURCE_SHA256 } from '../lib/oaSections.js';
 import {
   COUNSEL_CONTRACT,
@@ -13,6 +14,13 @@ import {
   resolveCounselRequest,
   validateCounselAnswer,
 } from '../lib/counselContract.js';
+import {
+  RUNTIME_CONTRACT,
+  RuntimeCounselRequestSchema,
+  resolveRuntimeCounselRequest,
+  makeRuntimeCounselReceipt,
+  validateRuntimeCounselAnswer,
+} from '../lib/counselRuntimeContract.js';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
@@ -82,9 +90,41 @@ const AskSchema = z.object({
   question: z.string().trim().min(3).max(2000),
 });
 
-export function createCounselRouter({ answerQuestion = askCounsel } = {}) {
+export function createCounselRouter({
+  answerQuestion = askCounsel,
+  answerRuntimeQuestion = askRuntimeCounsel,
+  resolveRuntimeRequest = resolveRuntimeCounselRequest,
+} = {}) {
   const router = Router();
   router.post('/', createCounselLimiter(), requireAuth, async (req, res, next) => {
+    if (req.body?.contractVersion === RUNTIME_CONTRACT) {
+      res.set('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+      const parsed = RuntimeCounselRequestSchema.safeParse(req.body);
+      if (!parsed.success)
+        return next(new AppError('Invalid runtime source request', 400, 'invalid_runtime_request'));
+      try {
+        const resolved = resolveRuntimeRequest(parsed.data);
+        const result = await answerRuntimeQuestion(resolved);
+        const { answer, support, citations } = validateRuntimeCounselAnswer(
+          { answer: result.answer, support: result.support, citations: result.citations },
+          resolved,
+        );
+        return res.json({
+          ok: true,
+          contractVersion: RUNTIME_CONTRACT,
+          answer,
+          support,
+          target: resolved.target,
+          model: result.model,
+          receipt: makeRuntimeCounselReceipt(resolved, citations),
+          availability: resolved.availability,
+        });
+      } catch (err) {
+        return next(
+          err instanceof AppError ? err : new AppError('The counsel desk could not answer', 502),
+        );
+      }
+    }
     // An unknown explicit version must not silently fall back to legacy handling.
     const strict = req.body?.contractVersion !== undefined;
     const parsed = (strict ? CounselRequestSchema : AskSchema).safeParse(req.body ?? {});

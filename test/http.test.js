@@ -58,7 +58,8 @@ const auth = (token) => ({ Authorization: `Bearer ${token}` });
 test('GET /health → 200 { status: "ok" } with no auth', async () => {
   const { status, body } = await request('GET', '/health');
   assert.equal(status, 200);
-  assert.deepEqual(body, { status: 'ok' });
+  assert.equal(body.status, 'ok');
+  assert.ok('commit' in body); // deployed git SHA (null outside Render)
 });
 
 test('GET /xp/config → 200, public economy shape, no reader data', async () => {

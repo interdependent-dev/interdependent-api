@@ -49,7 +49,11 @@ const deepHealthLimiter = rateLimit({
 // and reports which work, so a bad ANTHROPIC_MODEL or API-key problem is
 // diagnosable from the outside without log access.
 app.get('/health', async (req, res, next) => {
-  if (req.query.deep !== '1') return res.json({ status: 'ok' });
+  // `commit` is the deployed git SHA (Render sets RENDER_GIT_COMMIT) — the way
+  // to confirm a deploy actually landed.
+  if (req.query.deep !== '1') {
+    return res.json({ status: 'ok', commit: process.env.RENDER_GIT_COMMIT ?? null });
+  }
   return deepHealthLimiter(req, res, async () => {
     try {
       const models = await Promise.all(candidateModels().map((m) => pingModel(m)));

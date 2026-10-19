@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
-    "@simplewebauthn/server": "^13.3.3",
+    "@simplewebauthn/server": "^14.0.0",
     "@supabase/supabase-js": "^2.112.4",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

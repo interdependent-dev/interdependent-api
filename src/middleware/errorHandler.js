@@ -11,6 +11,21 @@ export class AppError extends Error {
 
 // eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, next) {
+  // Parser errors occur before route middleware. They may retain the entire
+  // submitted body (including private source text), so never log the error.
+  if (err.type === 'entity.parse.failed' || err.type === 'entity.too.large') {
+    if (/^\/counsel(?:\/|$)/i.test(req.originalUrl?.split('?')[0] ?? '')) {
+      res.set('Cache-Control', 'private, no-store');
+    }
+  }
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Request body is not valid JSON', code: 'invalid_json' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res
+      .status(413)
+      .json({ error: 'Request body exceeds the allowed size', code: 'request_too_large' });
+  }
   // CORS errors arrive here from the cors middleware callback
   if (err.message?.startsWith('CORS:')) {
     return res.status(403).json({ error: err.message });
